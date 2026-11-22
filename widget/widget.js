@@ -1023,8 +1023,8 @@
               if (dataStr === '[DONE]') continue;
               try {
                 const parsed = JSON.parse(dataStr);
-                if (parsed.token || parsed.delta || parsed.text) {
-                  const token = parsed.token || parsed.delta || parsed.text;
+                if (parsed.token || parsed.delta || parsed.text || parsed.content) {
+                  const token = parsed.token || parsed.delta || parsed.text || parsed.content;
                   fullText += token;
                   bubbleEl.innerHTML = this._formatMarkdown(fullText);
                   this._scrollToBottom();
