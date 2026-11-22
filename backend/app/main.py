@@ -32,6 +32,8 @@ from backend.app.agent.graph import (
     extract_pills_and_clean_message,
     format_product_context,
     get_llm,
+    has_word,
+    product_sizes,
     invoke_groq_resilient,
     make_punchy,
     parse_price,
@@ -135,7 +137,7 @@ def resolve_node_metadata(node: str, state: SalesState, user_text: str = "") -> 
     target_price = parse_price(target.get("price", 100.0))
     discounted_price = round(target_price * 0.9, 2)
     target_name = target.get("title") or target.get("name") or "Featured Piece"
-    sizes_avail = target.get("sizes") or (target.get("variants", {}).get("sizes") if isinstance(target.get("variants"), dict) else [])
+    sizes_avail = product_sizes(target)
 
     if node == "action" or any(w in text_lower for w in ["buy", "checkout", "grab it", "apply", "discount", "lock it in"]):
         stage = "READY_TO_BUY"
@@ -157,7 +159,7 @@ def resolve_node_metadata(node: str, state: SalesState, user_text: str = "") -> 
         ]
         recs = [target]
 
-    elif any(w in text_lower for w in ["size", "sizing", "fit", "measure", "height", "weight"]) or (sizes_avail and any(s.lower() in text_lower for s in sizes_avail)):
+    elif has_word(text_lower, ["size", "sizes", "sizing", "fit", "fits", "measure", "measurements", "height", "weight"]) or has_word(text_lower, [size.lower() for size in sizes_avail]):
         stage = "EVALUATOR"
         show_card = False
         action = None
@@ -171,7 +173,7 @@ def resolve_node_metadata(node: str, state: SalesState, user_text: str = "") -> 
                 "Apply the 10% discount and let's buy"
             ]
 
-    elif any(w in text_lower for w in ["pair", "match", "shoes", "pants", "look", "suit", "cocktail", "wedding", "marriage", "marraige", "reception", "dinner"]):
+    elif any(w in text_lower for w in ["pair", "match", "shoes", "pants", "look", "suit", "cocktail", "wedding", "marriage", "marraige", "ceremony", "reception", "dinner"]):
         stage = "EVALUATOR"
         show_card = False
         action = None
@@ -247,7 +249,7 @@ def root():
         "service": "AI Sales Associate Cloud Engine",
         "status": "online",
         "engine": "LangGraph + Groq LPU",
-        "groq_model": os.getenv("GROQ_MODEL", "llama-3.3-70b-versatile"),
+        "groq_model": os.getenv("GROQ_MODEL", "openai/gpt-oss-120b"),
         "langsmith_tracing": LANGSMITH_ENABLED,
     }
 

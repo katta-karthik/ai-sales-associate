@@ -12,10 +12,32 @@ from backend.app.agent.graph import (
     invoke_groq_resilient,
 )
 from backend.app.main import app
-from langchain_core.messages import HumanMessage
+from langchain_core.messages import AIMessage, HumanMessage
 
 
 client = TestClient(app)
+
+
+@pytest.fixture(autouse=True)
+def local_model(monkeypatch):
+    class Model:
+        def invoke(self, messages):
+            return AIMessage(content="Try the linen shirt.")
+
+        async def astream(self, messages):
+            yield self.invoke(messages)
+
+    monkeypatch.setattr("backend.app.agent.graph.get_llm", lambda **kwargs: Model())
+
+
+def test_product_size_quick_replies():
+    from backend.app.main import resolve_node_metadata
+    state = init_sales_state(viewed_products=[{"name": "Shirt", "sizes": ["S", "M", 42]}])
+    replies = resolve_node_metadata("validation", state, "What shoes pair with this?")[1]
+    assert "What shoes work best?" in replies
+    for answer in ["I wear M", "42"]:
+        assert "I wear 42" in resolve_node_metadata("objection", state, answer)[1]
+
 
 
 def test_catalog_retrieval():
@@ -88,13 +110,15 @@ def test_sales_graph_compilation():
     assert graph is not None
 
 
-def test_api_health_endpoint():
+@pytest.mark.parametrize("key", ["", "test-key"])
+def test_api_health_endpoint(monkeypatch, key):
     """Verify /health endpoint."""
+    monkeypatch.setenv("GROQ_API_KEY", key)
     res = client.get("/health")
     assert res.status_code == 200
     data = res.json()
     assert data["status"] == "healthy"
-    assert data["groq_configured"] is True
+    assert data["groq_configured"] is bool(key)
     assert data["catalog_size"] >= 9
 
 

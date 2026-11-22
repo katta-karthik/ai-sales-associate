@@ -145,6 +145,18 @@ async def stream_groq_resilient(
         raise last_exc
 
 
+def product_sizes(product: Dict[str, Any]) -> List[str]:
+    sizes = product.get("sizes")
+    if not sizes and isinstance(product.get("variants"), dict):
+        sizes = product["variants"].get("sizes")
+    if isinstance(sizes, str):
+        sizes = [sizes]
+    if not isinstance(sizes, list):
+        return []
+    return [str(size).strip() for size in sizes
+            if type(size) in (str, int, float) and str(size).strip()]
+
+
 def format_product_context(products: List[Dict[str, Any]]) -> str:
     """Format product dicts into a concise context block for the LLM."""
     if not products:
@@ -161,7 +173,7 @@ def format_product_context(products: List[Dict[str, Any]]) -> str:
         hero = p.get('hero_highlight') or p.get('description') or 'Impeccable modern silhouette'
         reviews = p.get('reviews_summary') or f"{p.get('rating', '4.9')} stars ({p.get('reviewCount', '128')} reviews)"
 
-        sizes = p.get('sizes') or (p.get('variants', {}).get('sizes') if isinstance(p.get('variants'), dict) else [])
+        sizes = product_sizes(p)
         sizes_str = ", ".join(sizes) if sizes else "S, M, L, XL"
 
         lines.append(
@@ -172,7 +184,7 @@ def format_product_context(products: List[Dict[str, Any]]) -> str:
     return "\n".join(lines)
 
 
-def _has_word(text: str, cues: List[str]) -> bool:
+def has_word(text: str, cues: List[str]) -> bool:
     """Check if any cue matches as a whole word or phrase in text."""
     for cue in cues:
         pattern = r"\b" + re.escape(cue) + r"\b"
@@ -212,7 +224,7 @@ def classify_intent(state: SalesState) -> str:
         "lock it in", "grab it", "payment", "ship", "discount", "discount code",
         "coupon", "apply", "promo", "stylist10", "view & buy", "view and buy"
     ]
-    if _has_word(text, action_cues):
+    if has_word(text, action_cues):
         return "action"
 
     # 2. Objection / Anxiety / Doubt / Policy / Sizing cues
@@ -224,13 +236,13 @@ def classify_intent(state: SalesState) -> str:
         "between medium and large", "between small and medium", "between large and xl",
         "stretch", "fabric stretch", "does it shrink"
     ]
-    if _has_word(text, objection_cues):
+    if has_word(text, objection_cues):
         return "objection"
 
     # Contextual check: If prior AI asked about sizing/fit and user provides a size (e.g. "medium", "m", "large", "l")
     if prior_ai_msg and any(w in prior_ai_msg for w in ["size", "height", "fit", "measure"]):
         size_answers = ["small", "medium", "large", "xl", "xs", "s", "m", "l", "inches", "cm", "lbs", "kg"]
-        if _has_word(text, size_answers):
+        if has_word(text, size_answers):
             return "objection"
 
     # 3. Validation / "Hero" pitch cues
@@ -241,7 +253,7 @@ def classify_intent(state: SalesState) -> str:
         "shoes", "pants", "trousers", "sneakers", "loafers", "accessories", "color", "colour",
         "will this suit", "dress this down", "dress up"
     ]
-    if _has_word(text, validation_cues):
+    if has_word(text, validation_cues):
         return "validation"
 
     # 4. Curation / "The Rack Pull" cues or disliking current piece
@@ -251,7 +263,7 @@ def classify_intent(state: SalesState) -> str:
         "what else", "rack", "collection", "bestsellers",
         "don't like", "dont like", "not like", "something else", "different", "other styles", "fresh styles"
     ]
-    if _has_word(text, curation_cues):
+    if has_word(text, curation_cues):
         return "curation"
 
     # 5. Discovery cues (answering occasion, style, preferences, wedding/reception/ceremony)
@@ -264,7 +276,7 @@ def classify_intent(state: SalesState) -> str:
         "black", "navy", "olive", "charcoal", "camel", "white", "blue", "grey", "gray",
         "both", "either", "reception only", "ceremony only", "yes", "shopping for an occasion"
     ]
-    if _has_word(text, discovery_cues):
+    if has_word(text, discovery_cues):
         return "discovery"
 
     # Contextual check: If prior AI asked a question (e.g. ceremony or reception? event or everyday?)
@@ -279,13 +291,13 @@ def classify_intent(state: SalesState) -> str:
         "are u based", "are you based", "where are you", "where are u", "who made you",
         "are you human", "are you a bot", "are you ai"
     ]
-    if _has_word(text, chitchat_cues):
+    if has_word(text, chitchat_cues):
         return "discovery"
 
     # 7. Greetings / Initial approach ONLY if explicitly a greeting
     greeting_cues = ["hi", "hello", "hey", "good morning", "good evening", "good afternoon", "howdy", "greetings"]
     human_messages = [m for m in messages if isinstance(m, HumanMessage)]
-    if _has_word(text, greeting_cues) and len(human_messages) <= 1 and len(words) <= 4:
+    if has_word(text, greeting_cues) and len(human_messages) <= 1 and len(words) <= 4:
         return "greeting"
 
     # Default based on current intent stage or previous node
@@ -309,7 +321,7 @@ def build_node_prompt(node: str, state: SalesState) -> List[BaseMessage]:
 
     target_price = parse_price(target.get("price", 100.0))
     discounted_price = round(target_price * 0.9, 2)
-    sizes_avail = target.get("sizes") or (target.get("variants", {}).get("sizes") if isinstance(target.get("variants"), dict) else [])
+    sizes_avail = product_sizes(target)
     sizes_str = ", ".join(sizes_avail) if sizes_avail else "S, M, L, XL"
 
     if node == "greeting":
@@ -513,7 +525,7 @@ def action_node(state: SalesState) -> Dict[str, Any]:
 
     target_price = parse_price(target.get("price", 100.0))
     discounted_price = round(target_price * 0.9, 2)
-    sizes_avail = target.get("sizes") or (target.get("variants", {}).get("sizes") if isinstance(target.get("variants"), dict) else [])
+    sizes_avail = product_sizes(target)
     target_name = target.get("title") or target.get("name") or "Featured Item"
 
     action_payload = {
