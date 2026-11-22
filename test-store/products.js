@@ -35,15 +35,15 @@ const STORE_CATALOG = {
     inventoryRemaining: 4,
     images: [
       {
-        url: "https://images.unsplash.com/photo-1594938298603-c8148c4dae35?auto=format&fit=crop&w=1200&q=80",
+        url: "media/photo-1594938298603-c8148c4dae35.jpg",
         alt: "The Sovereign Merino Wool Blazer - Front View"
       },
       {
-        url: "https://images.unsplash.com/photo-1507679799987-c73779587ccf?auto=format&fit=crop&w=1200&q=80",
+        url: "media/photo-1507679799987-c73779587ccf.jpg",
         alt: "The Sovereign Merino Wool Blazer - Lifestyle Detail"
       },
       {
-        url: "https://images.unsplash.com/photo-1617137984095-74e4e5e3613f?auto=format&fit=crop&w=1200&q=80",
+        url: "media/photo-1617137984095-74e4e5e3613f.jpg",
         alt: "The Sovereign Merino Wool Blazer - Styling Pair"
       }
     ]
@@ -79,11 +79,11 @@ const STORE_CATALOG = {
     inventoryRemaining: 7,
     images: [
       {
-        url: "https://images.unsplash.com/photo-1602810318383-e386cc2a3ccf?auto=format&fit=crop&w=1200&q=80",
+        url: "media/photo-1602810318383-e386cc2a3ccf.jpg",
         alt: "The Minimalist Oxford Button-Down - Front View"
       },
       {
-        url: "https://images.unsplash.com/photo-1596755094514-f87e34085b2c?auto=format&fit=crop&w=1200&q=80",
+        url: "media/photo-1596755094514-f87e34085b2c.jpg",
         alt: "The Minimalist Oxford Button-Down - Fabric Close Up"
       }
     ]
@@ -118,11 +118,11 @@ const STORE_CATALOG = {
     inventoryRemaining: 5,
     images: [
       {
-        url: "https://images.unsplash.com/photo-1624378439575-d8705ad7ae80?auto=format&fit=crop&w=1200&q=80",
+        url: "media/photo-1624378439575-d8705ad7ae80.jpg",
         alt: "Pleated Tailored Wool Trousers - Standing Fit"
       },
       {
-        url: "https://images.unsplash.com/photo-1548883354-7622d03aca27?auto=format&fit=crop&w=1200&q=80",
+        url: "media/photo-1548883354-7622d03aca27.jpg",
         alt: "Pleated Tailored Wool Trousers - Detail View"
       }
     ]
@@ -157,11 +157,11 @@ const STORE_CATALOG = {
     inventoryRemaining: 3,
     images: [
       {
-        url: "https://images.unsplash.com/photo-1576566588028-4147f3842f27?auto=format&fit=crop&w=1200&q=80",
+        url: "media/photo-1576566588028-4147f3842f27.jpg",
         alt: "Pure Mongolian Cashmere Crewneck - Main Shot"
       },
       {
-        url: "https://images.unsplash.com/photo-1434389677669-e08b4cac3105?auto=format&fit=crop&w=1200&q=80",
+        url: "media/photo-1434389677669-e08b4cac3105.jpg",
         alt: "Pure Mongolian Cashmere Crewneck - Soft Texture"
       }
     ]
@@ -196,11 +196,11 @@ const STORE_CATALOG = {
     inventoryRemaining: 6,
     images: [
       {
-        url: "https://images.unsplash.com/photo-1595777457583-95e059d581b8?auto=format&fit=crop&w=1200&q=80",
+        url: "media/photo-1595777457583-95e059d581b8.jpg",
         alt: "The Bias-Cut Mulberry Silk Slip Dress - Elegance"
       },
       {
-        url: "https://images.unsplash.com/photo-1539109136881-3be0616acf4b?auto=format&fit=crop&w=1200&q=80",
+        url: "media/photo-1539109136881-3be0616acf4b.jpg",
         alt: "The Bias-Cut Mulberry Silk Slip Dress - Movement"
       }
     ]
@@ -235,11 +235,11 @@ const STORE_CATALOG = {
     inventoryRemaining: 2,
     images: [
       {
-        url: "https://images.unsplash.com/photo-1553062407-98eeb64c6a62?auto=format&fit=crop&w=1200&q=80",
+        url: "media/photo-1553062407-98eeb64c6a62.jpg",
         alt: "The Heritage Full-Grain Leather Duffle - Profile"
       },
       {
-        url: "https://images.unsplash.com/photo-1548036328-c9fa89d128fa?auto=format&fit=crop&w=1200&q=80",
+        url: "media/photo-1548036328-c9fa89d128fa.jpg",
         alt: "The Heritage Full-Grain Leather Duffle - Travel Ready"
       }
     ]
@@ -250,14 +250,61 @@ window.__AI_SALES_CONFIG = {
   ...window.__AI_SALES_CONFIG,
   catalog: Object.values(STORE_CATALOG).map(p => ({
     id: p.id, title: p.title, description: p.shortDescription, price: p.price,
-    image: p.images[0].url, sizes: p.sizes,
+    image: new URL(p.images[0].url, location.href).href, sizes: p.sizes,
     url: new URL('product.html?id=' + encodeURIComponent(p.id), location.href).href
   }))
 };
 
 // Global Store State & Cart helpers
+function readBag() {
+  try {
+    const items = JSON.parse(localStorage.getItem('karthik_co_cart') || '[]');
+    return Array.isArray(items) ? items.filter(i => i && typeof i.title === 'string' &&
+      Number.isFinite(i.price) && Number.isInteger(i.quantity) && i.quantity > 0) : [];
+  } catch {
+    return [];
+  }
+}
+
 window.StoreApp = {
-  cart: JSON.parse(localStorage.getItem('karthik_co_cart') || '[]'),
+  cart: readBag(),
+
+  openBag() {
+    const dialog = document.createElement('dialog');
+    dialog.className = 'bag-panel';
+    dialog.setAttribute('aria-label', 'Shopping bag');
+    const title = document.createElement('h2');
+    title.textContent = 'Your bag';
+    dialog.append(title);
+    for (const item of this.cart) {
+      const line = document.createElement('p');
+      const name = document.createElement('strong');
+      name.textContent = item.title;
+      line.append(name, document.createElement('br'), `${item.color} · ${item.size} · Qty ${item.quantity} · $${(item.price * item.quantity).toFixed(2)}`);
+      const remove = document.createElement('button');
+      remove.className = 'bag-remove';
+      remove.textContent = 'Remove';
+      remove.setAttribute('aria-label', `Remove ${item.title}, ${item.size}, ${item.color}`);
+      remove.onclick = () => {
+        this.cart = this.cart.filter(entry => entry !== item);
+        this.saveBag();
+        dialog.close();
+        this.openBag();
+      };
+      line.append(document.createElement('br'), remove);
+      dialog.append(line);
+    }
+    const summary = document.createElement('p');
+    const total = this.cart.reduce((sum, item) => sum + item.quantity * item.price, 0);
+    summary.textContent = this.cart.length ? `Subtotal  $${total.toFixed(2)}` : 'Your shopping bag is empty.';
+    const close = document.createElement('button');
+    close.textContent = 'Continue shopping';
+    close.onclick = () => dialog.close();
+    dialog.append(summary, close);
+    dialog.addEventListener('close', () => dialog.remove(), { once: true });
+    document.body.append(dialog);
+    dialog.showModal();
+  },
 
   getCartCount() {
     return this.cart.reduce((sum, item) => sum + (item.quantity || 1), 0);
@@ -288,9 +335,13 @@ window.StoreApp = {
         quantity: 1
       });
     }
-    localStorage.setItem('karthik_co_cart', JSON.stringify(this.cart));
-    this.updateCartBadges();
+    this.saveBag();
     this.showToast(`Added to Bag: ${product.title} (${selectedSize} / ${selectedColor})`);
+  },
+
+  saveBag() {
+    try { localStorage.setItem('karthik_co_cart', JSON.stringify(this.cart)); } catch { /* Keep the bag available for this visit. */ }
+    this.updateCartBadges();
   },
 
   showToast(message, type = 'success') {
@@ -333,10 +384,11 @@ window.StoreApp = {
       <span style="font-size: 18px;">🛍️</span>
       <div style="flex: 1;">
         <div style="font-weight: 600; font-size: 13px; text-transform: uppercase; letter-spacing: 0.05em; color: #d4af37; margin-bottom: 2px;">Karthik & Co. Cart</div>
-        <div style="color: #e5e7eb; font-size: 13px; line-height: 1.4;">${message}</div>
+        <div style="color: #e5e7eb; font-size: 13px; line-height: 1.4;" class="toast-message"></div>
       </div>
     `;
 
+    toast.querySelector('.toast-message').textContent = message;
     container.appendChild(toast);
     setTimeout(() => {
       toast.style.opacity = '0';
@@ -349,4 +401,5 @@ window.StoreApp = {
 
 document.addEventListener('DOMContentLoaded', () => {
   window.StoreApp.updateCartBadges();
+  document.getElementById('header-cart-btn')?.addEventListener('click', () => window.StoreApp.openBag());
 });

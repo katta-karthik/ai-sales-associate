@@ -138,7 +138,7 @@ def discover_products(req: ChatRequest, sid: str, state: SalesState) -> Optional
     budget = re.search(r"\b(under|below|up to)\s*\$?([\d,]+(?:\.\d+)?)", text)
     query = text[:budget.start()] + text[budget.end():] if budget else text
     stop = {"show", "find", "browse", "browsing", "recommend", "please", "some", "for", "the",
-            "something", "under", "below", "alternatives", "fresh", "styles", "just", "with",
+            "collection", "something", "under", "below", "alternatives", "fresh", "styles", "just", "with",
             "and", "items", "pieces", "products", "clothes", "about", "less", "want", "would", "like", "looking", "can", "you", "that", "cost", "than", "any", "options"}
     terms = {w.rstrip("s") for w in re.findall(r"[a-z]{3,}", query) if w not in stop}
     matches = []

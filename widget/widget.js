@@ -26,16 +26,16 @@
 
   const STYLES = `
     :host {
-      --ai-primary: #1e293b;
-      --ai-primary-hover: #0f172a;
-      --ai-accent: #10b981;
-      --ai-accent-gold: #f59e0b;
-      --ai-text-main: #0f172a;
-      --ai-text-muted: #64748b;
+      --ai-primary: #522331;
+      --ai-primary-hover: #302427;
+      --ai-accent: #82534d;
+      --ai-accent-gold: #915348;
+      --ai-text-main: #302427;
+      --ai-text-muted: #665c58;
       --ai-bg-card: #ffffff;
-      --ai-bg-bubble-stylist: #f1f5f9;
-      --ai-bg-bubble-user: #1e293b;
-      --ai-border: #e2e8f0;
+      --ai-bg-bubble-stylist: #f5f0e8;
+      --ai-bg-bubble-user: #522331;
+      --ai-border: #e1d8cf;
       --ai-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.04);
       --ai-shadow-bubble: 0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05);
 
@@ -94,7 +94,7 @@
       width: 32px;
       height: 32px;
       border-radius: 50%;
-      background: linear-gradient(135deg, #3b82f6, #8b5cf6);
+      background: #764452;
       display: flex;
       align-items: center;
       justify-content: center;
@@ -298,7 +298,7 @@
       width: 36px;
       height: 36px;
       border-radius: 50%;
-      background: linear-gradient(135deg, #3b82f6, #8b5cf6);
+      background: #764452;
       display: flex;
       align-items: center;
       justify-content: center;
@@ -319,7 +319,7 @@
       right: 0;
       width: 9px;
       height: 9px;
-      background: #10b981;
+      background: #82534d;
       border: 2px solid var(--ai-primary);
       border-radius: 50%;
     }
@@ -401,7 +401,7 @@
       width: 26px;
       height: 26px;
       border-radius: 50%;
-      background: linear-gradient(135deg, #3b82f6, #8b5cf6);
+      background: #764452;
       display: flex;
       align-items: center;
       justify-content: center;
@@ -427,8 +427,8 @@
 
     .message-row.stylist .message-bubble {
       background: #ffffff;
-      color: #1e293b;
-      border: 1px solid #e2e8f0;
+      color: #522331;
+      border: 1px solid #e1d8cf;
       border-top-left-radius: 4px;
       box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
     }
@@ -443,7 +443,7 @@
     .product-card {
       margin-top: 10px;
       background: #ffffff;
-      border: 1px solid #e2e8f0;
+      border: 1px solid #e1d8cf;
       border-radius: 12px;
       overflow: hidden;
       box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05);
@@ -455,7 +455,7 @@
     }
 
     .product-card-hero-badge {
-      background: linear-gradient(90deg, #f59e0b, #d97706);
+      background: linear-gradient(90deg, #915348, #d97706);
       color: #ffffff;
       padding: 4px 10px;
       font-size: 11px;
@@ -478,7 +478,7 @@
       height: 64px;
       border-radius: 8px;
       object-fit: cover;
-      background: #f1f5f9;
+      background: #f5f0e8;
       flex-shrink: 0;
     }
 
@@ -493,7 +493,7 @@
     .product-card-title {
       font-size: 13px;
       font-weight: 600;
-      color: #0f172a;
+      color: #302427;
       white-space: nowrap;
       overflow: hidden;
       text-overflow: ellipsis;
@@ -509,7 +509,7 @@
 
     .product-card-desc {
       font-size: 11px;
-      color: #64748b;
+      color: #665c58;
       display: -webkit-box;
       -webkit-line-clamp: 2;
       -webkit-box-orient: vertical;
@@ -519,7 +519,7 @@
     .product-card-actions {
       padding: 8px 12px;
       background: #f8fafc;
-      border-top: 1px solid #e2e8f0;
+      border-top: 1px solid #e1d8cf;
       display: flex;
       gap: 8px;
     }
@@ -567,9 +567,9 @@
     }
 
     .quick-reply-pill:hover {
-      background: #f1f5f9;
+      background: #f5f0e8;
       border-color: #94a3b8;
-      color: #0f172a;
+      color: #302427;
       transform: translateY(-1px);
     }
 
@@ -580,7 +580,7 @@
       gap: 4px;
       padding: 8px 12px;
       background: #ffffff;
-      border: 1px solid #e2e8f0;
+      border: 1px solid #e1d8cf;
       border-radius: 12px;
       border-top-left-radius: 4px;
     }
@@ -631,7 +631,7 @@
       background: transparent;
       outline: none;
       font-size: 13.5px;
-      color: #0f172a;
+      color: #302427;
       padding: 6px 0;
       font-family: inherit;
     }
@@ -665,6 +665,29 @@
       fill: none;
       stroke: currentColor;
       stroke-width: 2;
+    }
+
+    .chat-drawer { width: 402px; height: 600px; border-radius: 12px; background: #fcf9f3; }
+    .drawer-header { padding: 20px; }
+    .drawer-info-title { font: normal 29px/1.12 Georgia, serif; letter-spacing: -.04em; }
+    .drawer-info-status { color: #efdad4; }
+    .message-thread { background: #fcf9f3; }
+    .message-bubble { line-height: 1.55; }
+    .drawer-footer { background: #fcf9f3; }
+    .input-form { border-radius: 6px; }
+    .stylist-pill { font: 600 14px/1.2 system-ui,sans-serif; padding: 10px 17px 10px 10px; }
+    .pill-avatar-wrap, .drawer-avatar { background: #f5e2d5; color: #522331; font: italic 25px Georgia,serif; }
+    .quick-reply-pill { color: #522331; background: #fffaf4; border-color: #c9aba8; }
+    .product-card-hero-badge { background: #f1e6dc; color: #59303a; }
+    .btn-view-buy, .btn-send { background: #522331; color: white; }
+    :focus-visible { outline: 3px solid #af765c; outline-offset: 2px; }
+    @media (max-width: 500px) {
+      :host { bottom: max(12px,env(safe-area-inset-bottom)); right: 12px; }
+      .chat-drawer { width: calc(100vw - 24px); max-width: none; max-height: calc(100dvh - 90px); }
+      .message-thread { padding: 12px; }
+    }
+    @media (prefers-reduced-motion: reduce) {
+      *, *::before, *::after { animation-duration: .01ms !important; transition-duration: .01ms !important; }
     }
   `;
 
@@ -710,7 +733,7 @@
         <!-- Proactive Speech Bubble -->
         <div class="speech-bubble" id="speechBubble">
           <div class="bubble-header">
-            <span class="bubble-badge">✨ Stylist Insight</span>
+            <span class="bubble-badge">Styling advice</span>
             <button class="bubble-close" id="btnDismissBubble" aria-label="Dismiss">&times;</button>
           </div>
           <div class="bubble-message" id="bubbleMessage">Looking for styling advice or sizing confirmation? I'm here to help!</div>
@@ -720,22 +743,16 @@
         </div>
 
         <!-- Chat Drawer -->
-        <div class="chat-drawer" id="chatDrawer">
+        <section class="chat-drawer" id="chatDrawer" aria-label="Styling assistant">
           <div class="drawer-header">
             <div class="drawer-header-left">
-              <div class="drawer-avatar">
-                <svg viewBox="0 0 24 24"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"></path><circle cx="12" cy="7" r="4"></circle></svg>
-                <div class="drawer-avatar-beacon"></div>
-              </div>
+              <div class="drawer-avatar" aria-hidden="true">J</div>
               <div>
-                <div class="drawer-info-title">AI Sales Associate</div>
-                <div class="drawer-info-status">Live Shop-Floor Stylist</div>
+                <div class="drawer-info-title">Ask Julian</div>
+                <div class="drawer-info-status">Personal AI stylist</div>
               </div>
             </div>
             <div class="drawer-header-actions">
-              <button class="drawer-btn-icon" id="btnMinimize" aria-label="Minimize">
-                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="5" y1="12" x2="19" y2="12"></line></svg>
-              </button>
               <button class="drawer-btn-icon" id="btnClose" aria-label="Close">
                 <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
               </button>
@@ -754,20 +771,12 @@
               </button>
             </form>
           </div>
-        </div>
+        </section>
 
         <!-- Floating Stylist Pill -->
-        <div class="stylist-pill" id="stylistPill">
-          <div class="pill-avatar-wrap">
-            <svg class="pill-avatar-svg" viewBox="0 0 24 24"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"></path><circle cx="12" cy="7" r="4"></circle></svg>
-            <div class="status-beacon-pulse"></div>
-            <div class="status-beacon"></div>
-          </div>
-          <div class="pill-text">
-            <span class="pill-title">AI Stylist <span class="sparkle-icon">✨</span></span>
-            <span class="pill-subtitle">Ready to assist</span>
-          </div>
-        </div>
+        <button type="button" class="stylist-pill" id="stylistPill" aria-expanded="false" aria-controls="chatDrawer">
+          <span class="pill-avatar-wrap" aria-hidden="true">J</span>Ask Julian
+        </button>
       `;
 
       this.shadow.appendChild(container);
@@ -776,7 +785,6 @@
     bindEvents() {
       const pill = this.shadow.getElementById('stylistPill');
       const btnClose = this.shadow.getElementById('btnClose');
-      const btnMinimize = this.shadow.getElementById('btnMinimize');
       const btnDismissBubble = this.shadow.getElementById('btnDismissBubble');
       const btnOpenFromBubble = this.shadow.getElementById('btnOpenFromBubble');
       const chatForm = this.shadow.getElementById('chatForm');
@@ -784,7 +792,9 @@
 
       pill.addEventListener('click', () => this.toggleDrawer());
       btnClose.addEventListener('click', () => this.closeDrawer());
-      btnMinimize.addEventListener('click', () => this.closeDrawer());
+      this.shadow.addEventListener('keydown', event => {
+        if (event.key === 'Escape' && this.isOpen) this.closeDrawer();
+      });
       btnDismissBubble.addEventListener('click', () => this.dismissBubble());
       btnOpenFromBubble.addEventListener('click', () => {
         this.dismissBubble();
@@ -888,6 +898,7 @@
       const drawer = this.shadow.getElementById('chatDrawer');
       const bubble = this.shadow.getElementById('speechBubble');
       drawer.classList.add('open');
+      this.shadow.getElementById('stylistPill').setAttribute('aria-expanded', 'true');
       bubble.classList.remove('visible');
 
       if (window.__AISalesAssociateSessionMemory) {
@@ -897,7 +908,7 @@
       // Auto-focus input
       setTimeout(() => {
         const input = this.shadow.getElementById('chatInput');
-        if (input) input.focus();
+        if (input && this.isOpen) input.focus();
       }, 300);
 
       // If thread is empty, render initial greeting
@@ -912,6 +923,9 @@
       this.resumeHesitation();
       const drawer = this.shadow.getElementById('chatDrawer');
       drawer.classList.remove('open');
+      const launcher = this.shadow.getElementById('stylistPill');
+      launcher.setAttribute('aria-expanded', 'false');
+      launcher.focus({ preventScroll: true });
       if (window.__AISalesAssociateSessionMemory) {
         window.__AISalesAssociateSessionMemory.setDrawerState({ isOpen: false });
       }
@@ -951,8 +965,8 @@
     }
 
     renderInitialGreeting() {
-      let welcomeText = "Welcome to Karthik & Co.! I'm your digital shop-floor stylist. Are you searching for a sharp look for an upcoming occasion, or browsing fresh arrivals?";
-      let quickReplies = ["Shopping for an occasion", "Just browsing fresh styles", "Check size & fit"];
+      let welcomeText = "What are you looking for? Tell me a material, a budget, or the occasion you’re dressing for.";
+      let quickReplies = ["Show me wool under $200", "Browse the collection", "Shopping for an occasion"];
 
       if (this.currentProduct && this.currentProduct.isProductPage) {
         const title = this.currentProduct.title || this.currentProduct.name || "this piece";

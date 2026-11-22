@@ -16,7 +16,7 @@
   <!-- Google Fonts -->
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,500;0,600;0,700;1,400&family=Plus+Jakarta+Sans:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+  <link href="https://fonts.googleapis.com/css2?family=Instrument+Serif:ital@0;1&amp;family=DM+Sans:wght@400;500;600;700&amp;display=swap" rel="stylesheet">
 
   <!-- Storefront Stylesheet -->
   <link rel="stylesheet" href="style.css">
@@ -27,18 +27,13 @@
 <body>
 
   <!-- Top Announcement Bar -->
-  <aside class="announcement-bar" role="banner">
-    <div>
-      <span class="badge-live">LIVE</span>
-      <span>Complimentary Worldwide Express Delivery on orders over $150 &nbsp;•&nbsp; Free 30-Day Returns</span>
-    </div>
-  </aside>
+  <aside class="announcement-bar">Complimentary delivery on orders over $150</aside>
 
   <!-- Navigation Header -->
   <div class="header-wrapper">
     <header class="site-header">
       <a href="index.html" class="brand-logo" aria-label="Karthik and Co. Home">
-        KARTHIK <span>&amp;</span> CO.
+        Karthik <span>&amp;</span> Co.
       </a>
 
       <nav class="nav-links" aria-label="Main Navigation">
@@ -46,13 +41,11 @@
         <a href="#featured-products" data-category="men">Men</a>
         <a href="#featured-products" data-category="women">Women</a>
         <a href="#featured-products" data-category="accessories">Accessories</a>
-        <a href="#about-story">Lookbook</a>
+
       </nav>
 
       <div class="nav-actions">
-        <button class="action-icon-btn" aria-label="Search Catalog" title="Search">
-          <svg width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" viewBox="0 0 24 24"><circle cx="11" cy="11" r="8"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line></svg>
-        </button>
+        <a class="search-link" href="index.html?search=1#featured-products">Search</a>
         <button class="action-icon-btn" aria-label="Shopping Cart" id="header-cart-btn" title="View Cart">
           <svg width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" viewBox="0 0 24 24"><path d="M6 2L3 6v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V6l-3-4z"></path><line x1="3" y1="6" x2="21" y2="6"></line><path d="M16 10a4 4 0 0 1-8 0"></path></svg>
           <span class="cart-count-badge">0</span>
@@ -63,36 +56,28 @@
 
   <!-- Hero Banner -->
   <main>
-    <section class="hero-section" aria-label="Hero Collection Showcase">
-      <img src="https://images.unsplash.com/photo-1490481651871-ab68de25d43d?auto=format&fit=crop&w=1800&q=80" alt="Autumn/Winter Tailoring Campaign" class="hero-bg-media">
-      <div class="hero-overlay"></div>
+    <section class="hero-section" aria-labelledby="hero-title">
       <div class="hero-container">
-        <div class="hero-tag">
-          <span>◆</span> 2026 Collection Premiere
-        </div>
-        <h1 class="hero-title">Refined Silhouettes for the Unapologetic</h1>
-        <p class="hero-subtitle">
-          Pure Italian wool, long-staple organic cotton, and Grade-A cashmere. Designed with architectural precision for effortless presence in every room.
-        </p>
-        <div class="hero-cta-group">
-          <a href="#featured-products" class="btn-primary">Explore The Rack</a>
-          <a href="product.html?id=sovereign-blazer" class="btn-outline">View Flagship Blazer</a>
-        </div>
+        <p class="hero-tag">Autumn / Winter 2026</p>
+        <h1 class="hero-title" id="hero-title">The everyday<br><em>wardrobe.</em></h1>
+        <p class="hero-subtitle">Soft tailoring, textured knits and leather goods for the way you dress every day.</p>
+        <div class="hero-cta-group"><a class="btn-primary" href="#featured-products">Shop the collection <span aria-hidden="true">↗</span></a></div>
       </div>
+      <img class="campaign-photo" src="media/collection.jpg" fetchpriority="high" alt="A rail of cream, rust and charcoal garments on wooden hangers">
     </section>
 
     <!-- Category Filter Bar -->
     <section class="category-filter-section" id="featured-products">
       <div class="section-header">
-        <span class="section-kicker">Curated Essentials</span>
-        <h2 class="section-title">The Current Collection</h2>
+        <h2 class="section-title">Shop the collection</h2>
       </div>
 
+      <input class="collection-search" id="catalog-search" type="search" aria-label="Search the collection" placeholder="Search by piece or material">
       <div class="filter-tabs" role="tablist">
         <button class="filter-tab active" data-filter="all" role="tab" aria-selected="true">All Pieces</button>
-        <button class="filter-tab" data-filter="men" role="tab" aria-selected="false">Men's Tailoring</button>
-        <button class="filter-tab" data-filter="women" role="tab" aria-selected="false">Women's Modern</button>
-        <button class="filter-tab" data-filter="accessories" role="tab" aria-selected="false">Handcrafted Leather</button>
+        <button class="filter-tab" data-filter="men" role="tab" aria-selected="false">Men</button>
+        <button class="filter-tab" data-filter="women" role="tab" aria-selected="false">Women</button>
+        <button class="filter-tab" data-filter="accessories" role="tab" aria-selected="false">Accessories</button>
       </div>
     </section>
 
@@ -103,86 +88,11 @@
       </div>
     </section>
 
-    <!-- Value Propositions -->
-    <section class="value-props-section" id="about-story">
-      <div class="value-props-grid">
-        <div class="value-prop-card">
-          <div class="prop-icon">🧵</div>
-          <div class="prop-content">
-            <h4>Bespoke Italian Heritage</h4>
-            <p>Every jacket and overcoat is constructed using natural canvas interlinings woven in historic northern Italian mills.</p>
-          </div>
-        </div>
-        <div class="value-prop-card">
-          <div class="prop-icon">🌱</div>
-          <div class="prop-content">
-            <h4>100% Traceable Fibers</h4>
-            <p>From organic Californian Supima cotton to cruelty-free inner Mongolian cashmere, zero compromise on ethics.</p>
-          </div>
-        </div>
-        <div class="value-prop-card">
-          <div class="prop-icon">✨</div>
-          <div class="prop-content">
-            <h4>AI Digital Shop-Floor Stylist</h4>
-            <p>Experience personalized fit advice, outfit pairing, and confident styling guidance 24/7 in real time.</p>
-          </div>
-        </div>
-        <div class="value-prop-card">
-          <div class="prop-icon">📦</div>
-          <div class="prop-content">
-            <h4>Frictionless Handoff</h4>
-            <p>Enjoy complimentary 2-day express shipping, luxury gift packaging, and seamless 30-day doorstep returns.</p>
-          </div>
-        </div>
-      </div>
-    </section>
   </main>
 
   <!-- Site Footer -->
-  <footer class="site-footer">
-    <div class="footer-inner">
-      <div class="footer-brand">
-        <h3>KARTHIK &amp; CO.</h3>
-        <p>A modern sartorial fashion house delivering timeless silhouettes and uncompromising material integrity for the discerning individual.</p>
-      </div>
-
-      <div class="footer-col">
-        <h5>Collections</h5>
-        <ul>
-          <li><a href="#featured-products" data-category="men">Men's Tailoring</a></li>
-          <li><a href="#featured-products" data-category="women">Women's Knitwear</a></li>
-          <li><a href="#featured-products" data-category="accessories">Artisanal Leather</a></li>
-          <li><a href="product.html?id=sovereign-blazer">Flagship Merino Blazer</a></li>
-        </ul>
-      </div>
-
-      <div class="footer-col">
-        <h5>Concierge</h5>
-        <ul>
-          <li><a href="#">Styling Consultations</a></li>
-          <li><a href="#">Size &amp; Fit Guide</a></li>
-          <li><a href="#">Complimentary Alterations</a></li>
-          <li><a href="#">Track Order</a></li>
-        </ul>
-      </div>
-
-      <div class="footer-col">
-        <h5>Flagship Atelier</h5>
-        <p style="font-size: 13px; line-height: 1.6; margin-bottom: 12px;">
-          442 Madison Avenue, 4th Floor<br>
-          New York, NY 10022<br>
-          atelier@karthikandco.com
-        </p>
-      </div>
-    </div>
-
-    <div class="footer-bottom">
-      <div>&copy; 2026 Karthik &amp; Co. Modern Apparel Inc. All rights reserved.</div>
-      <div style="display: flex; gap: 20px;">
-        <a href="#" style="color: #6b7280; text-decoration: none;">Privacy Policy</a>
-        <a href="#" style="color: #6b7280; text-decoration: none;">Terms of Service</a>
-      </div>
-    </div>
+  <footer class="site-footer"><a class="footer-wordmark" href="index.html">Karthik &amp; Co.</a>
+    <a href="index.html#featured-products">Shop the collection &nearr;</a>
   </footer>
 
   <!-- Store State & Catalog Scripts -->
@@ -192,10 +102,12 @@
       const container = document.getElementById('products-container');
       const tabs = document.querySelectorAll('.filter-tab');
 
+      const search = document.getElementById('catalog-search');
       function renderProducts(filter = 'all') {
         const productList = Object.values(STORE_CATALOG).filter(p => {
-          if (filter === 'all') return true;
-          return p.category === filter;
+          const query = search.value.trim().toLowerCase();
+          return (filter === 'all' || p.category === filter) &&
+            (p.title + ' ' + p.shortDescription).toLowerCase().includes(query);
         });
 
         container.innerHTML = productList.map(product => `
@@ -217,7 +129,7 @@
               </div>
             </div>
           </a>
-        `).join('');
+        `).join('') || '<p role="status">No pieces match this search.</p>';
       }
 
       // Initial render
@@ -248,19 +160,12 @@
         });
       });
 
-      // Header Cart Click
-      const cartBtn = document.getElementById('header-cart-btn');
-      if (cartBtn) {
-        cartBtn.addEventListener('click', () => {
-          const count = window.StoreApp.getCartCount();
-          if (count === 0) {
-            window.StoreApp.showToast('Your shopping bag is currently empty. Explore our collection!');
-          } else {
-            const summary = window.StoreApp.cart.map(i => `${i.title} (${i.size}) x${i.quantity || 1}`).join(', ');
-            window.StoreApp.showToast(`Bag (${count} items): ${summary}`);
-          }
-        });
-      }
+      const params = new URLSearchParams(location.search);
+      const initialTab = Array.from(tabs).find(tab => tab.dataset.filter === params.get('collection'));
+      initialTab?.click();
+      search.addEventListener('input', () => renderProducts(document.querySelector('.filter-tab.active').dataset.filter));
+      if (params.has('search')) search.focus();
+
     });
   </script>
 </body>

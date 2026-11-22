@@ -41,7 +41,7 @@ Storefront pages must provide product metadata via one or more of the following 
 The storefront PDP should expose actionable elements matching standard IDs:
 - `#add-to-cart-btn`: Native Add to Cart button.
 - `#buy-now-btn`: Native Buy Now button.
-- `#purchase-section`: Target anchor for the widget's "View & Buy" smooth-scroll animation.
+- `#purchase-section`: Contains merchant purchase controls. The stylist can focus the native add-to-cart button.
 
 ---
 

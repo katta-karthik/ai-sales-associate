@@ -38,7 +38,7 @@
   - Closed Shadow Root with Constructable Stylesheets.
   - Floating Stylist Pill with status beacon.
   - Proactive speech bubble.
-  - Chat drawer with SSE streaming typewriter effect, quick-reply pills, product card with "Hero" validation compliment, and 'View & Buy' button triggering native smooth scroll to purchase section.
+  - Chat drawer with SSE streaming typewriter effect, quick-reply pills, merchant product cards and a product-options button that opens the item or focuses its native cart control.
 
 ### 2. LangGraph Cloud Sales Engine (`backend/`)
 - **`main.py`**:
@@ -65,5 +65,5 @@
 ### 3. Test Storefront (`test-store/`)
 - **`index.html`**: Luxury apparel homepage with hero banner, category filters, product grid, and loader embed.
 - **`product.html`**: High-fidelity PDP with multi-image gallery, size/color selectors, native `#add-to-cart-btn` and `#buy-now-btn`, and valid Schema.org Product JSON-LD.
-- **`products.js`**: Client-side catalog hydration and mock checkout toast logic.
+- **`products.js`**: Client-side catalog, persistent shopping bag and bag review dialog.
 - **`style.css`**: Luxury typography, animations, responsive layouts.

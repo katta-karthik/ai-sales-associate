@@ -12,7 +12,7 @@
   <meta property="og:description" id="og-desc" content="Unstructured luxury tailoring crafted from superfine 120s Italian Merino wool. Drapes effortlessly from executive boardroom to evening dinner.">
   <meta property="og:type" content="product">
   <meta property="og:url" id="og-url" content="product.html?id=sovereign-blazer">
-  <meta property="og:image" id="og-image" content="https://images.unsplash.com/photo-1594938298603-c8148c4dae35?auto=format&fit=crop&w=1200&q=80">
+  <meta property="og:image" id="og-image" content="media/photo-1594938298603-c8148c4dae35.jpg">
   <meta property="product:price:amount" id="og-price" content="349.00">
   <meta property="product:price:currency" content="USD">
   <meta property="product:availability" id="og-availability" content="in stock">
@@ -24,9 +24,9 @@
     "@type": "Product",
     "name": "The Sovereign Merino Wool Blazer",
     "image": [
-      "https://images.unsplash.com/photo-1594938298603-c8148c4dae35?auto=format&fit=crop&w=1200&q=80",
-      "https://images.unsplash.com/photo-1507679799987-c73779587ccf?auto=format&fit=crop&w=1200&q=80",
-      "https://images.unsplash.com/photo-1617137984095-74e4e5e3613f?auto=format&fit=crop&w=1200&q=80"
+      "media/photo-1594938298603-c8148c4dae35.jpg",
+      "media/photo-1507679799987-c73779587ccf.jpg",
+      "media/photo-1617137984095-74e4e5e3613f.jpg"
     ],
     "description": "Unstructured luxury tailoring crafted from superfine 120s Italian Merino wool. Half-canvas construction, soft unpadded shoulders, hand-stitched pick lapels, and genuine horn buttons.",
     "sku": "KC-BLZ-001",
@@ -62,7 +62,7 @@
   <!-- Google Fonts -->
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,500;0,600;0,700;1,400&family=Plus+Jakarta+Sans:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+  <link href="https://fonts.googleapis.com/css2?family=Instrument+Serif:ital@0;1&amp;family=DM+Sans:wght@400;500;600;700&amp;display=swap" rel="stylesheet">
 
   <!-- Storefront Stylesheet -->
   <link rel="stylesheet" href="style.css">
@@ -73,32 +73,25 @@
 <body>
 
   <!-- Top Announcement Bar -->
-  <aside class="announcement-bar" role="banner">
-    <div>
-      <span class="badge-live">LIVE</span>
-      <span>Complimentary Worldwide Express Delivery on orders over $150 &nbsp;•&nbsp; Free 30-Day Returns</span>
-    </div>
-  </aside>
+  <aside class="announcement-bar">Complimentary delivery on orders over $150</aside>
 
   <!-- Navigation Header -->
   <div class="header-wrapper">
     <header class="site-header">
       <a href="index.html" class="brand-logo" aria-label="Karthik and Co. Home">
-        KARTHIK <span>&amp;</span> CO.
+        Karthik <span>&amp;</span> Co.
       </a>
 
       <nav class="nav-links" aria-label="Main Navigation">
-        <a href="index.html">Home</a>
-        <a href="index.html#featured-products" data-category="men">Men</a>
-        <a href="index.html#featured-products" data-category="women">Women</a>
-        <a href="index.html#featured-products" data-category="accessories">Accessories</a>
-        <a href="index.html#about-story">Lookbook</a>
+        <a href="index.html" >Home</a>
+        <a href="index.html?collection=men#featured-products">Men</a>
+        <a href="index.html?collection=women#featured-products">Women</a>
+        <a href="index.html?collection=accessories#featured-products">Accessories</a>
+
       </nav>
 
       <div class="nav-actions">
-        <button class="action-icon-btn" aria-label="Search Catalog" title="Search">
-          <svg width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" viewBox="0 0 24 24"><circle cx="11" cy="11" r="8"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line></svg>
-        </button>
+        <a class="search-link" href="index.html?search=1#featured-products">Search</a>
         <button class="action-icon-btn" aria-label="Shopping Cart" id="header-cart-btn" title="View Cart">
           <svg width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" viewBox="0 0 24 24"><path d="M6 2L3 6v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V6l-3-4z"></path><line x1="3" y1="6" x2="21" y2="6"></line><path d="M16 10a4 4 0 0 1-8 0"></path></svg>
           <span class="cart-count-badge">0</span>
@@ -107,7 +100,6 @@
     </header>
   </div>
 
-  <!-- PDP Main Container -->
   <main class="pdp-container" id="product-page-main">
     
     <!-- Breadcrumb Trail -->
@@ -125,18 +117,18 @@
       <!-- Gallery Column -->
       <section class="pdp-gallery" id="product-gallery" aria-label="Product Image Showcase">
         <div class="main-image-viewport">
-          <img id="pdp-main-image" src="https://images.unsplash.com/photo-1594938298603-c8148c4dae35?auto=format&fit=crop&w=1200&q=80" alt="The Sovereign Merino Wool Blazer - Primary View">
+          <img id="pdp-main-image" src="media/photo-1594938298603-c8148c4dae35.jpg" alt="The Sovereign Merino Wool Blazer - Primary View">
         </div>
         <div class="gallery-thumbs" id="pdp-gallery-thumbs" role="tablist" aria-label="Product Image Thumbnails">
           <!-- Thumbnails populated by script or initial fallback -->
           <div class="gallery-thumb active" data-img-idx="0" role="tab" aria-selected="true" tabindex="0">
-            <img src="https://images.unsplash.com/photo-1594938298603-c8148c4dae35?auto=format&fit=crop&w=300&q=80" alt="Thumbnail 1">
+            <img src="media/photo-1594938298603-c8148c4dae35.jpg" alt="Thumbnail 1">
           </div>
           <div class="gallery-thumb" data-img-idx="1" role="tab" aria-selected="false" tabindex="0">
-            <img src="https://images.unsplash.com/photo-1507679799987-c73779587ccf?auto=format&fit=crop&w=300&q=80" alt="Thumbnail 2">
+            <img src="media/photo-1507679799987-c73779587ccf.jpg" alt="Thumbnail 2">
           </div>
           <div class="gallery-thumb" data-img-idx="2" role="tab" aria-selected="false" tabindex="0">
-            <img src="https://images.unsplash.com/photo-1617137984095-74e4e5e3613f?auto=format&fit=crop&w=300&q=80" alt="Thumbnail 3">
+            <img src="media/photo-1617137984095-74e4e5e3613f.jpg" alt="Thumbnail 3">
           </div>
         </div>
       </section>
@@ -185,7 +177,7 @@
         <div class="selector-group" id="size-selector-area">
           <div class="selector-header">
             <span>Size: <strong class="selector-value-label" id="selected-size-label">M (Medium)</strong></span>
-            <span class="size-guide-link" id="size-guide-modal-trigger">Size &amp; Fit Guide &nearr;</span>
+            <button type="button" class="size-guide-link" id="size-guide-modal-trigger">Available sizes</button>
           </div>
           <div class="size-buttons-grid" id="size-options" role="radiogroup" aria-label="Size Options">
             <button class="size-btn" data-size="S" role="radio" aria-checked="false">S</button>
@@ -201,9 +193,9 @@
             <svg width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" viewBox="0 0 24 24"><path d="M6 2L3 6v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V6l-3-4z"></path><line x1="3" y1="6" x2="21" y2="6"></line><path d="M16 10a4 4 0 0 1-8 0"></path></svg>
             <span>Add to Cart</span>
           </button>
-          <button id="buy-now-btn" class="btn-buy-now" type="button" aria-label="Proceed to Instant Buy Now">
+          <button id="buy-now-btn" class="btn-buy-now" type="button" aria-label="Add item and review shopping bag">
             <svg width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" viewBox="0 0 24 24"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"></polygon></svg>
-            <span>Buy Now &bull; 1-Tap Checkout</span>
+            <span>Add &amp; review bag</span>
           </button>
         </div>
 
@@ -255,94 +247,15 @@
 
     <!-- Customer Reviews / Social Proof & Dwell Trigger Section -->
     <section class="pdp-reviews-section" id="reviews-section" aria-label="Customer Reviews">
-      <div class="reviews-header-block">
-        <div>
-          <span class="section-kicker">Verified Client Feedback</span>
-          <h2 class="section-title">What Owners Are Saying</h2>
-        </div>
-        <div style="text-align: right;">
-          <div style="font-size: 32px; font-weight: 700; color: var(--text-main); font-family: var(--font-serif);">4.9 / 5.0</div>
-          <div style="color: #eab308; font-size: 16px;">&#9733;&#9733;&#9733;&#9733;&#9733;</div>
-        </div>
-      </div>
-
-      <div class="reviews-grid">
-        <div class="review-card">
-          <div class="review-author-line">
-            <span class="review-author-name">Harrison V. &bull; New York, NY</span>
-            <span class="verified-buyer-badge">&check; Verified Owner</span>
-          </div>
-          <div style="color: #eab308; margin-bottom: 8px;">&#9733;&#9733;&#9733;&#9733;&#9733;</div>
-          <p class="review-text">"I was hesitant about ordering tailoring online, but the unstructured shoulder is sheer genius. I wore it straight out of the box to an executive dinner and received three spontaneous compliments. Incredible drape."</p>
-        </div>
-
-        <div class="review-card">
-          <div class="review-author-line">
-            <span class="review-author-name">Marcus K. &bull; London, UK</span>
-            <span class="verified-buyer-badge">&check; Verified Owner</span>
-          </div>
-          <div style="color: #eab308; margin-bottom: 8px;">&#9733;&#9733;&#9733;&#9733;&#9733;</div>
-          <p class="review-text">"The Biella wool feels noticeably superior to blazers costing twice as much on Savile Row. Size 40/M fits true to size. You feel like a million bucks the second you put it on."</p>
-        </div>
-
-        <div class="review-card">
-          <div class="review-author-line">
-            <span class="review-author-name">Alexander T. &bull; San Francisco, CA</span>
-            <span class="verified-buyer-badge">&check; Verified Owner</span>
-          </div>
-          <div style="color: #eab308; margin-bottom: 8px;">&#9733;&#9733;&#9733;&#9733;&#9733;</div>
-          <p class="review-text">"Breathable enough for long flights and stylish enough for investor pitches. The digital associate suggested pairing with charcoal trousers and it was spot on."</p>
-        </div>
-      </div>
+      <h2 class="section-title">Customer ratings</h2>
+      <p id="rating-summary"></p>
     </section>
 
   </main>
 
   <!-- Site Footer -->
-  <footer class="site-footer">
-    <div class="footer-inner">
-      <div class="footer-brand">
-        <h3>KARTHIK &amp; CO.</h3>
-        <p>A modern sartorial fashion house delivering timeless silhouettes and uncompromising material integrity for the discerning individual.</p>
-      </div>
-
-      <div class="footer-col">
-        <h5>Collections</h5>
-        <ul>
-          <li><a href="index.html#featured-products" data-category="men">Men's Tailoring</a></li>
-          <li><a href="index.html#featured-products" data-category="women">Women's Knitwear</a></li>
-          <li><a href="index.html#featured-products" data-category="accessories">Artisanal Leather</a></li>
-          <li><a href="product.html?id=sovereign-blazer">Flagship Merino Blazer</a></li>
-        </ul>
-      </div>
-
-      <div class="footer-col">
-        <h5>Concierge</h5>
-        <ul>
-          <li><a href="#">Styling Consultations</a></li>
-          <li><a href="#">Size &amp; Fit Guide</a></li>
-          <li><a href="#">Complimentary Alterations</a></li>
-          <li><a href="#">Track Order</a></li>
-        </ul>
-      </div>
-
-      <div class="footer-col">
-        <h5>Flagship Atelier</h5>
-        <p style="font-size: 13px; line-height: 1.6; margin-bottom: 12px;">
-          442 Madison Avenue, 4th Floor<br>
-          New York, NY 10022<br>
-          atelier@karthikandco.com
-        </p>
-      </div>
-    </div>
-
-    <div class="footer-bottom">
-      <div>&copy; 2026 Karthik &amp; Co. Modern Apparel Inc. All rights reserved.</div>
-      <div style="display: flex; gap: 20px;">
-        <a href="#" style="color: #6b7280; text-decoration: none;">Privacy Policy</a>
-        <a href="#" style="color: #6b7280; text-decoration: none;">Terms of Service</a>
-      </div>
-    </div>
+  <footer class="site-footer"><a class="footer-wordmark" href="index.html">Karthik &amp; Co.</a>
+    <a href="index.html#featured-products">Shop the collection &nearr;</a>
   </footer>
 
   <!-- Store State & Catalog Scripts -->
@@ -352,7 +265,11 @@
       // 1. Determine product from query params or default
       const urlParams = new URLSearchParams(window.location.search);
       const productId = urlParams.get('id') || 'sovereign-blazer';
-      const product = STORE_CATALOG[productId] || STORE_CATALOG['sovereign-blazer'];
+      if (!Object.hasOwn(STORE_CATALOG, productId)) {
+        location.replace('index.html#featured-products');
+        return;
+      }
+      const product = STORE_CATALOG[productId];
 
       let selectedColor = product.colors[0].name;
       let selectedSize = product.defaultSize || product.sizes[0];
@@ -431,9 +348,11 @@
         }
 
         document.getElementById('product-rating-value').textContent = p.rating;
-        document.getElementById('product-review-count').textContent = `${p.reviewCount} Verified Reviews`;
+        document.querySelector('.stars-rating').setAttribute('aria-label', `${p.rating} out of 5 stars`);
+        document.getElementById('rating-summary').textContent = `${p.rating} out of 5, based on ${p.reviewCount} ratings for ${p.title}.`;
+        document.getElementById('product-review-count').textContent = `${p.reviewCount} ratings`;
         document.getElementById('product-description').textContent = p.shortDescription;
-        document.getElementById('stock-count-text').textContent = `Only ${p.inventoryRemaining} pieces remaining in size ${selectedSize}`;
+        document.getElementById('stock-count-text').textContent = `${p.inventoryRemaining} pieces available`;
 
         // Gallery Main Image & Thumbs
         const mainImg = document.getElementById('pdp-main-image');
@@ -578,7 +497,7 @@
       if (buyNowBtn) {
         buyNowBtn.addEventListener('click', () => {
           window.StoreApp.addToCart(product, selectedColor, selectedSize);
-          window.StoreApp.showToast(`⚡ Direct Checkout initiated for ${product.title} ($${product.price.toFixed(2)})! Directing to payment gateway...`);
+          window.StoreApp.openBag();
         });
       }
 
@@ -586,7 +505,7 @@
       const sizeGuideTrigger = document.getElementById('size-guide-modal-trigger');
       if (sizeGuideTrigger) {
         sizeGuideTrigger.addEventListener('click', () => {
-          window.StoreApp.showToast('Fit Tip: This garment is tailored true-to-size. For an oversized silhouette, size up one grade.');
+          window.StoreApp.showToast(`Available sizes for ${product.title}: ${product.sizes.join(', ')}.`);
         });
       }
     });
