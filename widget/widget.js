@@ -1023,13 +1023,30 @@
               if (dataStr === '[DONE]') continue;
               try {
                 const parsed = JSON.parse(dataStr);
-                if (parsed.token || parsed.delta || parsed.text || parsed.content) {
-                  const token = parsed.token || parsed.delta || parsed.text || parsed.content;
+                if (parsed.type === 'token' && parsed.content) {
+                  fullText += parsed.content;
+                  bubbleEl.innerHTML = this._formatMarkdown(fullText);
+                  this._scrollToBottom();
+                } else if (parsed.content || parsed.token || parsed.delta || parsed.text) {
+                  const token = parsed.content || parsed.token || parsed.delta || parsed.text;
                   fullText += token;
                   bubbleEl.innerHTML = this._formatMarkdown(fullText);
                   this._scrollToBottom();
                 }
-                if (parsed.quick_replies) {
+                if (parsed.type === 'done') {
+                  if (!fullText && parsed.message) {
+                    fullText = parsed.message;
+                    bubbleEl.innerHTML = this._formatMarkdown(fullText);
+                    this._scrollToBottom();
+                  }
+                  if (parsed.show_card && Array.isArray(parsed.recommended_products) && parsed.recommended_products.length > 0) {
+                    productRec = parsed.recommended_products[0];
+                  }
+                  if (parsed.action_payload) {
+                    this.activeActionPayload = parsed.action_payload;
+                  }
+                }
+                if (parsed.quick_replies && Array.isArray(parsed.quick_replies)) {
                   quickReplies = parsed.quick_replies;
                 }
                 if (parsed.product) {
@@ -1045,16 +1062,19 @@
           }
         }
 
-        // Render Product Recommendation Card if provided
+        // Ensure bubble is never blank
+        if (!fullText || fullText.trim() === '') {
+          fullText = "I'm right here with you! Tell me about the occasion or vibe you're aiming for.";
+          bubbleEl.innerHTML = this._formatMarkdown(fullText);
+        }
+
+        // Render Product Recommendation Card only when a specific item is curated/recommended
         if (productRec) {
           this._renderProductCard(cardTarget, productRec);
-        } else if (this.currentProduct && this.currentProduct.isProductPage) {
-          // If on a product page and intent is high, attach hero card
-          this._renderProductCard(cardTarget, this.currentProduct);
         }
 
         // Render Quick Reply Pills
-        const defaultPills = ["How does sizing run?", "Pair this with an outfit", "Take me to checkout"];
+        const defaultPills = ["How does sizing run?", "Pair this with an outfit", "Apply the 10% discount"];
         const pillsToRender = quickReplies.length > 0 ? quickReplies : defaultPills;
         this._renderPills(pillsTarget, pillsToRender);
 

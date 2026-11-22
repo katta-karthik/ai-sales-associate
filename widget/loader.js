@@ -69,7 +69,7 @@
         if (mod === 'hesitation_matrix.js' && window.__AISalesAssociateHesitationMatrix) continue;
         if (mod === 'widget.js' && window.__AISalesAssociateWidget) continue;
 
-        await loadScript(`${baseUrl}${mod}`);
+        await loadScript(`${baseUrl}${mod}?v=1.0.2`);
       }
 
       // 2. Shield wrap bootstrap

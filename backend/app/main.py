@@ -74,6 +74,7 @@ class ChatResponse(BaseModel):
     quick_replies: List[str]
     recommended_products: List[Dict[str, Any]]
     action_payload: Optional[Dict[str, Any]] = None
+    show_card: bool = False
 
 
 # ==================== HELPERS ====================
@@ -92,61 +93,21 @@ def get_or_create_session(session_id: Optional[str], viewed_product: Optional[Di
     return sid, SESSIONS[sid]
 
 
-def resolve_node_metadata(node: str, state: SalesState) -> tuple[str, List[str], List[Dict[str, Any]], Optional[Dict[str, Any]]]:
-    """Extract quick replies, recommendations, and action payload for a given node."""
+def resolve_node_metadata(node: str, state: SalesState, user_text: str = "") -> tuple[str, List[str], List[Dict[str, Any]], Optional[Dict[str, Any]], bool]:
+    """
+    Extract quick replies, recommendations, action payload, and show_card flag.
+    Returns: (stage, replies, recs, action, show_card)
+    """
     curated = state.get("recommended_products", [])
     viewed = state.get("viewed_products", [])
     target = curated[0] if curated else (viewed[0] if viewed else CATALOG_ITEMS[0])
+    text_lower = user_text.lower().strip()
 
-    if node == "greeting":
-        stage = "EXPLORER"
-        replies = [
-            "Looking for an upcoming event",
-            "Tell me about this piece",
-            "Show me bestsellers",
-        ]
-        recs = viewed[:3]
-        action = None
-    elif node == "discovery":
-        stage = "EXPLORER"
-        replies = [
-            "Summer Wedding / Event",
-            "Smart Casual Work & Dinners",
-            "Relaxed Vacation Drape",
-        ]
-        recs = curated
-        action = None
-    elif node == "curation":
-        stage = "EVALUATOR"
-        if not curated:
-            curated = CATALOG_ITEMS[:3]
-        replies = [
-            f"How does the {curated[0]['name'].split()[-1]} fit?",
-            "What shoes or pants pair with this?",
-            "Tell me about the fabric quality",
-        ]
-        recs = curated
-        action = None
-    elif node == "validation":
-        stage = "EVALUATOR"
-        replies = [
-            f"How's the sizing on the {target['name'].split()[-1]}?",
-            "Can I see return policy?",
-            "Let's lock in my size",
-        ]
-        recs = [target]
-        action = None
-    elif node == "objection":
+    show_card = False
+
+    if node == "action" or any(w in text_lower for w in ["buy", "checkout", "grab it", "apply", "discount", "lock it in"]):
         stage = "READY_TO_BUY"
-        replies = [
-            "Sounds great, let's grab it!",
-            "Apply the 10% discount",
-            "What sizes are in stock?",
-        ]
-        recs = [target]
-        action = None
-    elif node == "action":
-        stage = "READY_TO_BUY"
+        show_card = True
         discounted_price = round(target.get("price", 100.0) * 0.9, 2)
         action = {
             "type": "checkout",
@@ -159,18 +120,68 @@ def resolve_node_metadata(node: str, state: SalesState) -> tuple[str, List[str],
             "sizes_available": target.get("sizes", []),
         }
         replies = [
-            "Complete 1-Tap Purchase",
-            "Change my size",
-            "Add one more piece",
+            "Complete checkout with 10% off",
+            "What shoes pair with this?",
+            "What is your return policy?"
         ]
         recs = [target]
+
+    elif any(w in text_lower for w in ["size", "sizing", "fit", "small", "large", "measure"]):
+        stage = "EVALUATOR"
+        show_card = False
+        action = None
+        recs = []
+        replies = [
+            "I'm between Medium and Large",
+            "Does this fabric have stretch?",
+            "Apply the 10% discount and let's buy"
+        ]
+
+    elif any(w in text_lower for w in ["pair", "match", "shoes", "pants", "look", "suit", "cocktail", "wedding", "dinner"]):
+        stage = "EVALUATOR"
+        show_card = False
+        action = None
+        recs = []
+        replies = [
+            "What shoes work best?",
+            "Can I dress this down casually?",
+            "I love it, let's grab it!"
+        ]
+
+    elif node == "greeting":
+        stage = "EXPLORER"
+        show_card = True
+        action = None
+        recs = viewed[:1]
+        replies = [
+            "Check my size",
+            "Will this suit an evening event?",
+            "Are there any discounts today?"
+        ]
+
+    elif node == "curation":
+        stage = "EVALUATOR"
+        show_card = True
+        action = None
+        recs = curated if curated else CATALOG_ITEMS[:2]
+        replies = [
+            "How does the sizing run?",
+            "What fabric is this made of?",
+            "Apply the 10% discount"
+        ]
+
     else:
         stage = "EXPLORER"
-        replies = ["Show me more", "Tell me about this"]
-        recs = viewed
+        show_card = False
         action = None
+        recs = []
+        replies = [
+            "Check my size",
+            "How should I style this?",
+            "Apply the 10% discount"
+        ]
 
-    return stage, replies, recs, action
+    return stage, replies, recs, action, show_card
 
 
 # ==================== ENDPOINTS ====================
@@ -233,7 +244,7 @@ def chat_sync(req: ChatRequest):
     # Execute graph node
     node = classify_intent(state)
     state["current_node"] = node
-    stage, replies, recs, action = resolve_node_metadata(node, state)
+    stage, replies, recs, action, show_card = resolve_node_metadata(node, state, user_text=req.message or "")
     state["intent_stage"] = stage
     state["quick_replies"] = replies
     state["recommended_products"] = recs
@@ -255,6 +266,7 @@ def chat_sync(req: ChatRequest):
         quick_replies=replies,
         recommended_products=recs,
         action_payload=action,
+        show_card=show_card,
     )
 
 
@@ -294,7 +306,7 @@ async def chat_stream(request: Request):
 
     node = classify_intent(state)
     state["current_node"] = node
-    stage, replies, recs, action = resolve_node_metadata(node, state)
+    stage, replies, recs, action, show_card = resolve_node_metadata(node, state, user_text=message or "")
     state["intent_stage"] = stage
     state["quick_replies"] = replies
     state["recommended_products"] = recs
@@ -309,6 +321,7 @@ async def chat_stream(request: Request):
             "session_id": sid,
             "node": node,
             "intent_stage": stage,
+            "show_card": show_card,
         }
         yield f"event: start\ndata: {json.dumps(meta_event)}\n\n"
 
@@ -341,6 +354,7 @@ async def chat_stream(request: Request):
             "quick_replies": replies,
             "recommended_products": recs,
             "action_payload": action,
+            "show_card": show_card,
         }
         yield f"event: done\ndata: {json.dumps(done_event)}\n\n"
 

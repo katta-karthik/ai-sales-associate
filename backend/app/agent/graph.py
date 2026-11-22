@@ -28,7 +28,7 @@ logger = logging.getLogger("sales_engine.graph")
 def get_llm(temperature: float = 0.6, model: Optional[str] = None) -> ChatGroq:
     """Initialize Groq LPU LLM client."""
     api_key = os.getenv("GROQ_API_KEY")
-    target_model = model or os.getenv("GROQ_MODEL", "llama-3.3-70b-versatile")
+    target_model = model or os.getenv("GROQ_MODEL", "qwen/qwen3.8-27b")
     return ChatGroq(
         model=target_model,
         temperature=temperature,
@@ -38,13 +38,13 @@ def get_llm(temperature: float = 0.6, model: Optional[str] = None) -> ChatGroq:
 
 def invoke_groq_resilient(prompt_messages: List[BaseMessage], temperature: float = 0.6) -> AIMessage:
     """
-    Invoke Groq LPU with primary model (llama-3.3-70b-versatile) and graceful
-    fallback if model is unavailable on the account, ensuring zero crashes.
+    Invoke Groq LPU with primary model (qwen/qwen3.8-27b) and graceful fallback.
     """
     candidates = [
-        os.getenv("GROQ_MODEL", "llama-3.3-70b-versatile"),
-        "openai/gpt-oss-120b",
+        os.getenv("GROQ_MODEL", "qwen/qwen3.8-27b"),
         "qwen/qwen3.8-27b",
+        "llama-3.3-70b-versatile",
+        "openai/gpt-oss-120b",
     ]
     seen = set()
     models = [m for m in candidates if not (m in seen or seen.add(m))]
@@ -68,9 +68,10 @@ async def stream_groq_resilient(
 ) -> AsyncGenerator[Any, None]:
     """Stream Groq LPU response tokens asynchronously with resilient model fallback."""
     candidates = [
-        os.getenv("GROQ_MODEL", "llama-3.3-70b-versatile"),
-        "openai/gpt-oss-120b",
+        os.getenv("GROQ_MODEL", "qwen/qwen3.8-27b"),
         "qwen/qwen3.8-27b",
+        "llama-3.3-70b-versatile",
+        "openai/gpt-oss-120b",
     ]
     seen = set()
     models = [m for m in candidates if not (m in seen or seen.add(m))]
@@ -136,7 +137,7 @@ def classify_intent(state: SalesState) -> str:
     action_cues = [
         "buy", "checkout", "order", "purchase", "add to cart", "cart",
         "take it", "i'll get", "i will get", "ill take", "ready to buy",
-        "lock it in", "grab it", "payment", "ship", "discount code", "coupon"
+        "lock it in", "grab it", "payment", "ship", "discount", "discount code", "coupon", "apply", "promo"
     ]
     if _has_word(text, action_cues):
         return "action"
@@ -144,9 +145,9 @@ def classify_intent(state: SalesState) -> str:
     # 2. Objection / Anxiety / Doubt / Policy cues
     objection_cues = [
         "size", "sizing", "fit", "true to size", "shrink", "scratchy",
-        "wrinkle", "iron", "care", "expensive", "pricey", "discount",
+        "wrinkle", "iron", "care", "expensive", "pricey",
         "return", "exchange", "refund", "return policy", "warranty",
-        "tight", "loose", "run small", "run large", "too much"
+        "tight", "loose", "run small", "run large", "too much", "measure", "height", "weight"
     ]
     if _has_word(text, objection_cues):
         return "objection"
