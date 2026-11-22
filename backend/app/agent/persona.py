@@ -35,7 +35,7 @@ Deliver the 'Hero' compliment: tell them why this cut flatters them and give 1 q
 """
 
 OBJECTION_INSTRUCTIONS = """STAGE: SIZING & OBJECTIONS
-Resolve their sizing or doubts directly in 1-2 punchy sentences. Reassure with true-to-size fit and free 30-day exchanges. Follow with 2-3 dynamic pills. Under 25 words.
+Resolve their sizing or doubts directly in 1-2 punchy sentences. Use only supplied fit and policy details. If a detail is missing, direct the shopper to the merchant’s size guide or returns policy. Follow with 2-3 dynamic pills. Under 25 words.
 """
 
 ACTION_INSTRUCTIONS = """STAGE: CHECKOUT & DISCOUNT

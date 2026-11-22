@@ -13,6 +13,9 @@ class SalesState(TypedDict, total=False):
     SalesState tracks conversational history, customer profile,
     browsing context, intent stage, and cart actions.
     """
+    merchant_catalog: bool
+    catalog_items: List[Dict[str, Any]]
+
     messages: Annotated[List[BaseMessage], add_messages]
     customer_profile: Dict[str, Any]
     viewed_products: List[Dict[str, Any]]

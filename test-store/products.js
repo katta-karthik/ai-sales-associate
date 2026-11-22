@@ -246,6 +246,15 @@ const STORE_CATALOG = {
   }
 };
 
+window.__AI_SALES_CONFIG = {
+  ...window.__AI_SALES_CONFIG,
+  catalog: Object.values(STORE_CATALOG).map(p => ({
+    id: p.id, title: p.title, description: p.shortDescription, price: p.price,
+    image: p.images[0].url, sizes: p.sizes,
+    url: new URL('product.html?id=' + encodeURIComponent(p.id), location.href).href
+  }))
+};
+
 // Global Store State & Cart helpers
 window.StoreApp = {
   cart: JSON.parse(localStorage.getItem('karthik_co_cart') || '[]'),

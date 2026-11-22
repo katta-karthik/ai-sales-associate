@@ -72,6 +72,7 @@ class ChatRequest(BaseModel):
     product: Optional[Dict[str, Any]] = Field(default=None, description="Currently viewed product on PDP")
     product_context: Optional[Dict[str, Any]] = Field(default=None, description="Alias for product")
     event: Optional[str] = Field(default="chat", description="Event trigger (chat, hesitation, approach)")
+    catalog: Optional[List[Dict[str, Any]]] = Field(default=None, max_length=200)
     occasion: Optional[str] = Field(default=None, description="Optional occasion filter")
 
 
@@ -95,13 +96,13 @@ def is_valid_product(prod: Optional[Dict[str, Any]]) -> bool:
     return bool(prod.get("id") or prod.get("name") or prod.get("title"))
 
 
-def get_or_create_session(session_id: Optional[str], viewed_product: Optional[Dict[str, Any]] = None) -> tuple[str, SalesState]:
+def get_or_create_session(session_id: Optional[str], viewed_product: Optional[Dict[str, Any]] = None, catalog: Optional[List[Dict[str, Any]]] = None) -> tuple[str, SalesState]:
     """Retrieve existing session or instantiate a fresh SalesState."""
     sid = session_id or str(uuid.uuid4())
     valid_prod = viewed_product if is_valid_product(viewed_product) else None
 
     if sid not in SESSIONS:
-        viewed_list = [valid_prod] if valid_prod else [CATALOG_ITEMS[0]]
+        viewed_list = [valid_prod] if valid_prod else ([] if catalog is not None else [CATALOG_ITEMS[0]])
         SESSIONS[sid] = init_sales_state(viewed_products=viewed_list)
     elif valid_prod:
         # Update currently viewed product if provided, keeping multi-turn history intact
@@ -120,7 +121,54 @@ def get_or_create_session(session_id: Optional[str], viewed_product: Optional[Di
         else:
             SESSIONS[sid]["viewed_products"] = [valid_prod] + existing
 
+    if catalog is not None:
+        SESSIONS[sid]["merchant_catalog"] = True
+        SESSIONS[sid]["catalog_items"] = [p for p in catalog if isinstance(p.get("title") or p.get("name"), str) and p.get("in_stock") is not False]
+        if valid_prod:
+            SESSIONS[sid]["recommended_products"] = []
     return sid, SESSIONS[sid]
+
+
+def discover_products(req: ChatRequest, sid: str, state: SalesState) -> Optional[ChatResponse]:
+    """Handle explicit collection searches against the merchant's published products."""
+    text = (req.message or "").lower()
+    if req.catalog is None or not re.search(r"\b(show|find|browse|browsing|recommend|under|below|up to|alternatives)\b", text):
+        return None
+
+    budget = re.search(r"\b(under|below|up to)\s*\$?([\d,]+(?:\.\d+)?)", text)
+    query = text[:budget.start()] + text[budget.end():] if budget else text
+    stop = {"show", "find", "browse", "browsing", "recommend", "please", "some", "for", "the",
+            "something", "under", "below", "alternatives", "fresh", "styles", "just", "with",
+            "and", "items", "pieces", "products", "clothes", "about", "less", "want", "would", "like", "looking", "can", "you", "that", "cost", "than", "any", "options"}
+    terms = {w.rstrip("s") for w in re.findall(r"[a-z]{3,}", query) if w not in stop}
+    matches = []
+    for item in req.catalog:
+        if not isinstance(item.get("title") or item.get("name"), str) or item.get("in_stock") is False:
+            continue
+        if budget:
+            try:
+                price = float(str(item["price"]).replace("$", "").replace(",", ""))
+                maximum = float(budget[2].replace(",", ""))
+            except (KeyError, ValueError):
+                continue
+            if price > maximum or (price == maximum and budget[1] != "up to"):
+                continue
+        words = {w.rstrip("s") for w in re.findall(r"[a-z]+", " ".join(
+            str(item.get(field, "")) for field in ("title", "name", "description", "category", "material", "colors", "occasion")
+        ).lower())}
+        if terms <= words:
+            matches.append(item)
+    picks = matches[:3]
+    message = ("Here are the pieces that match: " + ", ".join(p.get("title") or p.get("name") or str(p["id"]) for p in picks) + "."
+               if picks else "I couldn’t find a piece matching that request. Try a different material or a higher budget.")
+    state["current_node"] = "curation"
+    state["intent_stage"] = "EVALUATOR"
+    state["recommended_products"] = picks
+    state["action_payload"] = None
+    state["quick_replies"] = []
+    state["messages"].append(AIMessage(content=message))
+    return ChatResponse(session_id=sid, node="curation", intent_stage="EVALUATOR", message=message,
+                        quick_replies=[], recommended_products=picks, show_card=bool(picks))
 
 
 def resolve_node_metadata(node: str, state: SalesState, user_text: str = "") -> tuple[str, List[str], List[Dict[str, Any]], Optional[Dict[str, Any]], bool]:
@@ -130,7 +178,8 @@ def resolve_node_metadata(node: str, state: SalesState, user_text: str = "") -> 
     """
     curated = state.get("recommended_products", [])
     viewed = state.get("viewed_products", [])
-    target = curated[0] if curated else (viewed[0] if viewed else CATALOG_ITEMS[0])
+    available = curated or viewed or state.get("catalog_items", CATALOG_ITEMS)
+    target = available[0] if available else {}
     text_lower = user_text.lower().strip()
 
     show_card = False
@@ -140,6 +189,8 @@ def resolve_node_metadata(node: str, state: SalesState, user_text: str = "") -> 
     sizes_avail = product_sizes(target)
 
     if node == "action" or any(w in text_lower for w in ["buy", "checkout", "grab it", "apply", "discount", "lock it in"]):
+        if not target:
+            return "EXPLORER", ["Browse products"], [], None, False
         stage = "READY_TO_BUY"
         show_card = True
         action = {
@@ -152,6 +203,10 @@ def resolve_node_metadata(node: str, state: SalesState, user_text: str = "") -> 
             "checkout_url": f"/checkout?item={target.get('id')}&discount=STYLIST10",
             "sizes_available": sizes_avail,
         }
+        if state.get("merchant_catalog"):
+            return stage, ["Review product options", "Check sizing"], [target], {
+                "type": "view_product", "product_name": target_name, "url": target.get("url")
+            }, True
         replies = [
             f"Complete checkout (${discounted_price:.2f})",
             "What shoes pair with this?",
@@ -215,7 +270,7 @@ def resolve_node_metadata(node: str, state: SalesState, user_text: str = "") -> 
         stage = "EVALUATOR"
         show_card = True
         action = None
-        recs = curated if curated else (viewed[:2] if viewed else CATALOG_ITEMS[:2])
+        recs = available[:2]
         replies = [
             "How does the sizing run?",
             "What fabric is this made of?",
@@ -292,13 +347,17 @@ def chat_sync(req: ChatRequest):
     """Non-streaming synchronous chat endpoint for full response roundtrip."""
     session_id_val = req.session_id or req.thread_id
     product_val = req.product or req.product_context
-    sid, state = get_or_create_session(session_id_val, product_val)
+    sid, state = get_or_create_session(session_id_val, product_val, req.catalog)
 
     if req.message:
         state["messages"].append(HumanMessage(content=req.message))
     elif req.event == "approach":
         # Proactive approach trigger from hesitation detector
         state["messages"].append(HumanMessage(content="Hello! Can you help me find something or tell me about this piece?"))
+
+    result = discover_products(req, sid, state)
+    if result:
+        return result
 
     # Execute graph node
     node = classify_intent(state)
@@ -342,13 +401,13 @@ async def chat_stream(request: Request):
     # Parse parameters from either POST body or GET query
     if request.method == "POST":
         try:
-            body = await request.json()
-        except Exception:
-            body = {}
-        message = body.get("message")
-        session_id = body.get("session_id") or body.get("thread_id")
-        product = body.get("product") or body.get("product_context")
-        event = body.get("event", "chat")
+            req = ChatRequest.model_validate(await request.json())
+        except ValueError:
+            raise HTTPException(status_code=422, detail="Invalid chat request")
+        message = req.message
+        session_id = req.session_id or req.thread_id
+        product = req.product or req.product_context
+        event = req.event
     else:
         params = request.query_params
         message = params.get("message")
@@ -357,7 +416,7 @@ async def chat_stream(request: Request):
         product = get_product(product_id) if product_id else None
         event = params.get("event", "chat")
 
-    sid, state = get_or_create_session(session_id, product)
+    sid, state = get_or_create_session(session_id, product, req.catalog if request.method == "POST" else None)
 
     if message:
         state["messages"].append(HumanMessage(content=message))
@@ -365,6 +424,17 @@ async def chat_stream(request: Request):
         state["messages"].append(HumanMessage(content="I'm browsing this item but second-guessing if it will look good on me."))
     elif event in ("approach", "open"):
         state["messages"].append(HumanMessage(content="Hey! What makes this piece special?"))
+
+    result = discover_products(req, sid, state) if request.method == "POST" else None
+    if result:
+        def discovery_events():
+            for kind, data in (
+                ("start", {"session_id": sid, "node": result.node, "intent_stage": result.intent_stage, "show_card": result.show_card}),
+                ("token", {"content": result.message}),
+                ("done", result.model_dump()),
+            ):
+                yield f"event: {kind}\ndata: {json.dumps(dict(type=kind, **data))}\n\n"
+        return StreamingResponse(discovery_events(), media_type="text/event-stream")
 
     node = classify_intent(state)
     state["current_node"] = node

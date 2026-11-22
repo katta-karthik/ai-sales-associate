@@ -166,15 +166,15 @@ def format_product_context(products: List[Dict[str, Any]]) -> str:
         p_id = p.get('id') or p.get('sku') or 'item'
         p_name = p.get('title') or p.get('name') or 'Featured Item'
         price = parse_price(p.get('price', 100.0))
-        fit = p.get('fit') or 'Tailored true to size'
+        fit = p.get('fit') or 'Not supplied'
         material = p.get('material') or (
-            p.get('description', '')[:80] if p.get('description') else 'Premium Italian craftsmanship'
+            p.get('description', '')[:80] if p.get('description') else 'Not supplied'
         )
-        hero = p.get('hero_highlight') or p.get('description') or 'Impeccable modern silhouette'
-        reviews = p.get('reviews_summary') or f"{p.get('rating', '4.9')} stars ({p.get('reviewCount', '128')} reviews)"
+        hero = p.get('hero_highlight') or p.get('description') or 'Not supplied'
+        reviews = p.get('reviews_summary') or (f"{p['rating']} stars" if p.get("rating") else "Not supplied")
 
         sizes = product_sizes(p)
-        sizes_str = ", ".join(sizes) if sizes else "S, M, L, XL"
+        sizes_str = ", ".join(sizes) if sizes else "Not supplied"
 
         lines.append(
             f"- [{p_id}] {p_name} (${price:.2f}) | Fit: {fit} | Material: {material} | Sizes: {sizes_str}\n"
@@ -312,24 +312,25 @@ def classify_intent(state: SalesState) -> str:
 def build_node_prompt(node: str, state: SalesState) -> List[BaseMessage]:
     """Construct full prompt messages for a given sales stage node."""
     viewed = state.get("viewed_products", [])
-    if not viewed and CATALOG_ITEMS:
-        viewed = [CATALOG_ITEMS[0]]
+    inventory = state.get("catalog_items", CATALOG_ITEMS)
+    if not viewed:
+        viewed = inventory[:1]
 
     curated = state.get("recommended_products", [])
-    target = curated[0] if curated else (viewed[0] if viewed else CATALOG_ITEMS[0])
+    target = curated[0] if curated else (viewed[0] if viewed else {})
     profile = state.get("customer_profile", {})
 
     target_price = parse_price(target.get("price", 100.0))
     discounted_price = round(target_price * 0.9, 2)
     sizes_avail = product_sizes(target)
-    sizes_str = ", ".join(sizes_avail) if sizes_avail else "S, M, L, XL"
+    sizes_str = ", ".join(sizes_avail) if sizes_avail else "Not supplied"
 
     if node == "greeting":
         instruction = f"{GREETING_INSTRUCTIONS}\n\nCurrent items in view:\n{format_product_context(viewed)}"
     elif node == "discovery":
         instruction = f"{DISCOVERY_INSTRUCTIONS}\n\nCustomer Profile: {profile}\nBrowsed items:\n{format_product_context(viewed)}"
     elif node == "curation":
-        items = curated if curated else (viewed if viewed else CATALOG_ITEMS[:3])
+        items = curated if curated else (viewed if viewed else inventory[:3])
         instruction = f"{CURATION_INSTRUCTIONS}\n\nItems pulled from rack:\n{format_product_context(items)}"
     elif node == "validation":
         instruction = f"{VALIDATION_INSTRUCTIONS}\n\nFeatured Hero Piece:\n{format_product_context([target])}"
@@ -337,7 +338,7 @@ def build_node_prompt(node: str, state: SalesState) -> List[BaseMessage]:
         instruction = (
             f"{OBJECTION_INSTRUCTIONS}\n\n"
             f"Product details & verified reviews:\n{format_product_context([target])}\n"
-            f"Guarantee: Free 30-day sizing exchanges & full refunds.\n"
+            f"Return policy: {target.get('return_policy') or 'Not supplied'}.\n"
             f"Stylist Promo Code: 'STYLIST10' for 10% off today (Original: ${target_price:.2f} -> Discounted: ${discounted_price:.2f})."
         )
     elif node == "action":
@@ -350,6 +351,12 @@ def build_node_prompt(node: str, state: SalesState) -> List[BaseMessage]:
     else:
         instruction = GREETING_INSTRUCTIONS
 
+    if state.get("merchant_catalog") and node in ("action", "objection"):
+        instruction = (
+            "Help the shopper review product options on the merchant page. "
+            "Only use the supplied facts. The merchant confirms price, promotions, fit and returns. "
+            "Do not promise a discount, refund or cart change.\n" + format_product_context([target])
+        )
     system_content = f"{STYLIST_CORE_SYSTEM_PROMPT}\n\n{instruction}"
     prompt_messages: List[BaseMessage] = [SystemMessage(content=system_content)]
 
@@ -374,8 +381,9 @@ def build_node_prompt(node: str, state: SalesState) -> List[BaseMessage]:
 def greeting_node(state: SalesState) -> Dict[str, Any]:
     """Stage 1: Greeting & Approach."""
     viewed = state.get("viewed_products", [])
-    if not viewed and CATALOG_ITEMS:
-        viewed = [CATALOG_ITEMS[0]]
+    inventory = state.get("catalog_items", CATALOG_ITEMS)
+    if not viewed:
+        viewed = inventory[:1]
 
     prompt_messages = build_node_prompt("greeting", state)
     raw_response = invoke_groq_resilient(prompt_messages, temperature=0.7)

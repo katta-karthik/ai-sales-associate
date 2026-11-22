@@ -956,7 +956,7 @@
 
       if (this.currentProduct && this.currentProduct.isProductPage) {
         const title = this.currentProduct.title || this.currentProduct.name || "this piece";
-        welcomeText = `Welcome! I'm Julian, your stylist here. Eyeing **${title}**? It's one of our most praised pieces. Can I help you check fit or suggest a pairing?`;
+        welcomeText = `Welcome! I'm Julian, your stylist here. Eyeing **${title}**? Can I help you check fit or suggest a pairing?`;
         quickReplies = ["Check my size", "Will this suit an evening event?", "Are there any discounts today?"];
       }
 
@@ -998,7 +998,7 @@
 
       const sessionId = window.__AISalesAssociateSessionMemory
         ? (window.__AISalesAssociateSessionMemory.getSessionId?.() || window.__AISalesAssociateSessionMemory.getThreadId?.())
-        : 'fallback-session';
+        : (this.localSessionId ||= window.crypto.randomUUID());
 
       const viewedProducts = window.__AISalesAssociateSessionMemory
         ? window.__AISalesAssociateSessionMemory.getViewedProducts()
@@ -1008,12 +1008,13 @@
         message: userText,
         session_id: sessionId,
         thread_id: sessionId,
-        product: this.currentProduct || {},
-        product_context: this.currentProduct || {},
+        catalog: window.__AI_SALES_CONFIG?.catalog,
+        product: this.currentProduct?.isProductPage ? this.currentProduct : null,
         viewed_products: viewedProducts,
         hesitation_trigger: this.hesitationTrigger ? this.hesitationTrigger.type : null
       };
 
+      let streamRow;
       try {
         const response = await fetch(`${this.backendUrl}/api/chat/stream`, {
           method: 'POST',
@@ -1041,6 +1042,7 @@
             <div class="quick-replies-wrap pills-target"></div>
           </div>
         `;
+        streamRow = row;
         threadEl.appendChild(row);
 
         const bubbleEl = row.querySelector('.stream-target');
@@ -1052,19 +1054,22 @@
         let fullText = '';
         let quickReplies = [];
         let productRec = null;
+        let pending = '';
+        let finished = false;
 
         while (true) {
           const { done, value } = await reader.read();
           if (done) break;
 
           const chunk = decoder.decode(value, { stream: true });
-          const lines = chunk.split('\n');
+          const lines = (pending + chunk).split('\n');
+          pending = lines.pop();
 
           for (const line of lines) {
             if (line.startsWith('data: ')) {
               const dataStr = line.slice(6).trim();
               if (dataStr === '[DONE]') continue;
-              try {
+              {
                 const parsed = JSON.parse(dataStr);
                 if (parsed.type === 'token' && parsed.content) {
                   fullText += parsed.content;
@@ -1082,7 +1087,9 @@
                   }
                   this._scrollToBottom();
                 }
+                if (parsed.type === 'error') throw new Error('Stylist unavailable');
                 if (parsed.type === 'done') {
+                  finished = true;
                   if (parsed.session_id && window.__AISalesAssociateSessionMemory?.setSessionId) {
                     window.__AISalesAssociateSessionMemory.setSessionId(parsed.session_id);
                   }
@@ -1093,7 +1100,7 @@
                     quickReplies = parsed.quick_replies;
                   }
                   if (parsed.show_card && Array.isArray(parsed.recommended_products) && parsed.recommended_products.length > 0) {
-                    productRec = parsed.recommended_products[0];
+                    productRec = parsed.recommended_products;
                   }
                   if (parsed.action_payload) {
                     this.activeActionPayload = parsed.action_payload;
@@ -1105,19 +1112,12 @@
                 if (parsed.product) {
                   productRec = parsed.product;
                 }
-              } catch (e) {
-                // If chunk is raw text
-                fullText += dataStr;
-                const cleanStream = this._cleanMessageText(fullText);
-                if (cleanStream) {
-                  bubbleEl.innerHTML = this._formatMarkdown(cleanStream);
-                }
-                this._scrollToBottom();
               }
             }
           }
         }
 
+        if (!finished) throw new Error('Incomplete response');
         // Clean final message and extract pills if present in fullText
         const pillsMatch = fullText.match(/<pills>\s*(\[.*?\])\s*<\/pills>/i);
         if (pillsMatch && (!quickReplies || quickReplies.length === 0)) {
@@ -1157,40 +1157,23 @@
             sender: 'stylist',
             text: finalCleanText,
             quickReplies: quickReplies,
-            productRecommendation: productRec || this.currentProduct
+            productRecommendation: productRec
           });
         }
       } catch (err) {
         // Fallback gracefully without throwing or crashing host
         if (typingEl.parentNode) typingEl.parentNode.removeChild(typingEl);
-        this.handleFallbackResponse(userText);
+        streamRow?.remove();
+        this.handleFallbackResponse();
       } finally {
         this.isStreaming = false;
         this._scrollToBottom();
       }
     }
 
-    handleFallbackResponse(userText) {
-      let reply = "I'm right here with you! You're going to look like an absolute hero in this cut.";
-      let product = this.currentProduct;
-      let pills = ["Confirm my size", "What shoes pair best?", "Apply 10% discount and let's buy"];
-
-      if (userText.toLowerCase().includes('size') || userText.toLowerCase().includes('fit')) {
-        reply = "For our garments, if you prefer a sharp, bespoke Italian fit, go true to size. If you enjoy a comfortable, relaxed drape, sizing up one step works beautifully!";
-      } else if (userText.toLowerCase().includes('checkout') || userText.toLowerCase().includes('buy')) {
-        reply = "Let's walk you straight to the checkout counter! Use VIP code **STYLIST10** at checkout for 10% off your order.";
-      }
-
-      this._appendStylistBubble(reply, pills, product);
-
-      if (window.__AISalesAssociateSessionMemory) {
-        window.__AISalesAssociateSessionMemory.saveChatMessage({
-          sender: 'stylist',
-          text: reply,
-          quickReplies: pills,
-          productRecommendation: product
-        });
-      }
+    handleFallbackResponse() {
+      const product = this.currentProduct?.isProductPage ? this.currentProduct : null;
+      this.addStylistMessage("The stylist is unavailable. You can keep shopping or send your question again.", [], product);
     }
 
     addStylistMessage(text, quickReplies = [], product = null) {
@@ -1244,29 +1227,34 @@
     }
 
     _renderProductCard(container, product) {
-      if (!product || !product.title) return;
+      if (Array.isArray(product)) {
+        product.forEach(item => this._renderProductCard(container, item));
+        return;
+      }
+      const title = product?.title || product?.name;
+      if (!title) return;
       const card = document.createElement('div');
       card.className = 'product-card';
 
-      const imgUrl = product.image || 'https://images.unsplash.com/photo-1596755094514-f87e34085b2c?auto=format&fit=crop&w=300&q=80';
-      const priceText = product.price ? `${product.currency || '$'}${product.price}` : '$89.00';
+      const imgUrl = product.image || product.image_url;
+      const priceText = product.price != null && product.price !== '' ? `${product.currency || '$'}${product.price}` : '';
 
       card.innerHTML = `
         <div class="product-card-hero-badge">
-          <span>👑 Stylist Hero Pick · 98% Match</span>
+          <span>Stylist pick</span>
         </div>
         <div class="product-card-body">
-          <img src="${imgUrl}" alt="${this._escapeHTML(product.title)}" class="product-card-img" />
+          ${imgUrl ? `<img src="${this._escapeHTML(imgUrl)}" alt="" class="product-card-img" />` : ''}
           <div class="product-card-details">
-            <div class="product-card-title">${this._escapeHTML(product.title)}</div>
-            <div class="product-card-price">${priceText}</div>
-            <div class="product-card-desc">${this._escapeHTML(product.description || 'Premium craftsmanship tailored for confidence.')}</div>
+            <div class="product-card-title">${this._escapeHTML(title)}</div>
+            <div class="product-card-price">${this._escapeHTML(priceText)}</div>
+            <div class="product-card-desc">${this._escapeHTML(product.description || '')}</div>
           </div>
         </div>
         <div class="product-card-actions">
           <button class="btn-view-buy" id="btnViewBuy">
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 2L3 6v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V6l-3-4z"></path><line x1="3" y1="6" x2="21" y2="6"></line><path d="M16 10a4 4 0 0 1-8 0"></path></svg>
-            View & Buy
+            View product options
           </button>
         </div>
       `;
@@ -1287,10 +1275,6 @@
         pillBtn.textContent = pillText;
         pillBtn.addEventListener('click', () => {
           if (!this.isStreaming) {
-            const lower = pillText.toLowerCase();
-            if (lower.includes('buy') || lower.includes('checkout') || (lower.includes('discount') && lower.includes('apply'))) {
-              this.triggerViewAndBuy(this.currentProduct, { silent: true });
-            }
             this.handleUserSend(pillText);
           }
         });
@@ -1298,218 +1282,28 @@
       }
     }
 
-    /**
-     * Universal DOM Swatch & Cart Actuator:
-     * Platform-agnostic (Shopify, WooCommerce, Magento, BigCommerce, Custom).
-     * 1. Programmatically selects matching size/color in buttons, swatches, radio inputs, or <select> dropdowns.
-     * 2. Populates visible promo inputs with 'STYLIST10'.
-     * 3. Programmatically clicks native checkout / cart buttons.
-     * 4. Smooth-scrolls to the checkout/cart CTA with spotlight pulse effect.
-     */
-    triggerViewAndBuy(product, options = {}) {
+    triggerViewAndBuy(product) {
       shield.executeSafe(() => {
-        const prod = product || this.currentProduct || {};
-
-        // 1. Resolve Target Size & Color
-        const targetSize = options.size || prod.selectedVariant?.size || 'M';
-        const targetColor = options.color || prod.selectedVariant?.color || '';
-
-        // 2. Programmatically Select Matching Size in DOM across buttons, swatches, and <select>
-        if (targetSize) {
-          const targetUpper = targetSize.trim().toUpperCase();
-
-          // Check <select> dropdowns first (Shopify/WooCommerce standard)
-          const sizeSelects = document.querySelectorAll('select[name*="size" i], select#size, select[id*="size" i], select[name="id"], select.size-select, select');
-          let selectMatched = false;
-          for (const sel of sizeSelects) {
-            const opts = Array.from(sel.options || []);
-            const matchOpt = opts.find(opt => {
-              const optText = (opt.text || opt.value || '').trim().toUpperCase();
-              return optText === targetUpper || optText.includes(targetUpper) || (targetUpper.length === 1 && optText.startsWith(targetUpper));
-            });
-            if (matchOpt) {
-              sel.value = matchOpt.value;
-              sel.dispatchEvent(new Event('input', { bubbles: true }));
-              sel.dispatchEvent(new Event('change', { bubbles: true }));
-              selectMatched = true;
-              break;
-            }
+        if (product.url) {
+          const url = new URL(product.url, location.href);
+          if (url.origin !== location.origin || !['https:', 'http:'].includes(url.protocol)) {
+            this.addStylistMessage("Open this item in the store to review its options.");
+            return;
           }
-
-          // Check size buttons & swatches
-          if (!selectMatched) {
-            const sizeSelectors = [
-              `.size-btn[data-size="${targetSize}"]`,
-              `button[data-size="${targetSize}"]`,
-              `.size-option[data-size="${targetSize}"]`,
-              `[data-value="${targetSize}"]`,
-              `[data-option-value="${targetSize}"]`,
-              `button.size-btn`,
-              `.size-btn`,
-              `.size-option`,
-              `button[data-size]`,
-              `input[name*="size" i]`
-            ];
-            for (const sel of sizeSelectors) {
-              const elements = document.querySelectorAll(sel);
-              let matched = false;
-              elements.forEach(el => {
-                const val = (el.getAttribute('data-size') || el.getAttribute('data-value') || el.value || el.textContent || '').trim().toUpperCase();
-                if (val === targetUpper || (val.length === 1 && targetUpper.startsWith(val)) || (targetUpper.length === 1 && val.startsWith(targetUpper))) {
-                  el.click();
-                  if (el.tagName === 'INPUT' && el.type === 'radio') {
-                    el.checked = true;
-                  }
-                  if (typeof el.dispatchEvent === 'function') {
-                    el.dispatchEvent(new Event('change', { bubbles: true }));
-                  }
-                  el.classList.add('active');
-                  matched = true;
-                }
-              });
-              if (matched) break;
-            }
+          if (url.pathname !== location.pathname || url.search !== location.search) {
+            location.assign(url.href);
+            return;
           }
+        } else if (!this.currentProduct?.isProductPage ||
+                   (product.title || product.name) !== this.currentProduct.title) {
+          this.addStylistMessage("Look for this item in the store to review its options.");
+          return;
         }
-
-        // 3. Programmatically Select Matching Color in DOM
-        if (targetColor) {
-          const targetColorLower = targetColor.trim().toLowerCase();
-
-          // Check <select> color dropdowns
-          const colorSelects = document.querySelectorAll('select[name*="color" i], select#color, select[id*="color" i]');
-          let colorSelectMatched = false;
-          for (const sel of colorSelects) {
-            const opts = Array.from(sel.options || []);
-            const matchOpt = opts.find(opt => {
-              const optText = (opt.text || opt.value || '').trim().toLowerCase();
-              return optText.includes(targetColorLower) || targetColorLower.includes(optText);
-            });
-            if (matchOpt) {
-              sel.value = matchOpt.value;
-              sel.dispatchEvent(new Event('input', { bubbles: true }));
-              sel.dispatchEvent(new Event('change', { bubbles: true }));
-              colorSelectMatched = true;
-              break;
-            }
-          }
-
-          if (!colorSelectMatched) {
-            const colorSelectors = [
-              `.color-swatch-btn[data-color*="${targetColor}" i]`,
-              `.color-swatch-btn[title*="${targetColor}" i]`,
-              `.color-swatch-btn`,
-              `.color-swatch`,
-              `.color-btn`,
-              `input[name*="color" i]`
-            ];
-            for (const sel of colorSelectors) {
-              const elements = document.querySelectorAll(sel);
-              let matched = false;
-              elements.forEach(el => {
-                const val = (el.getAttribute('data-color') || el.getAttribute('title') || el.value || el.textContent || '').trim().toLowerCase();
-                if (val.includes(targetColorLower) || targetColorLower.includes(val)) {
-                  el.click();
-                  if (el.tagName === 'INPUT' && el.type === 'radio') {
-                    el.checked = true;
-                  }
-                  if (typeof el.dispatchEvent === 'function') {
-                    el.dispatchEvent(new Event('change', { bubbles: true }));
-                  }
-                  el.classList.add('active');
-                  matched = true;
-                }
-              });
-              if (matched) break;
-            }
-          }
-        }
-
-        // 4. Populate Promo / Discount Input with STYLIST10
-        const promoSelectors = [
-          'input#promo-code',
-          'input#discount-code',
-          'input#coupon-code',
-          'input[name*="discount" i]',
-          'input[name*="promo" i]',
-          'input[name*="coupon" i]',
-          'input[id*="discount" i]',
-          'input[id*="promo" i]',
-          'input[placeholder*="discount" i]',
-          'input[placeholder*="promo" i]',
-          'input[placeholder*="coupon" i]'
-        ];
-        for (const sel of promoSelectors) {
-          const promoInputs = document.querySelectorAll(sel);
-          promoInputs.forEach(input => {
-            input.value = 'STYLIST10';
-            input.dispatchEvent(new Event('input', { bubbles: true }));
-            input.dispatchEvent(new Event('change', { bubbles: true }));
-          });
-        }
-
-        // 5. Click the native CTA Button
-        const ctaSelectors = [
-          '#add-to-cart-btn',
-          '#buy-now-btn',
-          '#addToCart',
-          '#add-to-cart',
-          '#buy-now',
-          'button[name="add"]',
-          '.single_add_to_cart_button',
-          '.add-to-cart',
-          '.add_to_cart',
-          '.btn-add-cart',
-          '.btn-buy-now',
-          'button[data-action="add-to-cart"]',
-          'button[data-action="buy"]',
-          '[data-testid="add-to-cart"]',
-          '.shopify-payment-button__button'
-        ];
-
-        let targetEl = null;
-        for (const sel of ctaSelectors) {
-          const el = document.querySelector(sel);
-          if (el) {
-            targetEl = el;
-            el.click();
-            break;
-          }
-        }
-
-        // 6. Smooth Scroll to CTA / Checkout and Add Spotlight Glow
-        if (targetEl) {
-          targetEl.scrollIntoView({ behavior: 'smooth', block: 'center' });
-
-          const originalTransition = targetEl.style.transition;
-          const originalBoxShadow = targetEl.style.boxShadow;
-          const originalTransform = targetEl.style.transform;
-
-          targetEl.style.transition = 'all 0.4s ease';
-          targetEl.style.boxShadow = '0 0 0 6px #10b981, 0 10px 25px rgba(16, 185, 129, 0.4)';
-          targetEl.style.transform = 'scale(1.05)';
-
-          setTimeout(() => {
-            targetEl.style.transform = originalTransform;
-            setTimeout(() => {
-              targetEl.style.boxShadow = originalBoxShadow;
-              targetEl.style.transition = originalTransition;
-            }, 1800);
-          }, 400);
-
-          // Only inject confirmation message if triggered directly by user click on card CTA
-          // (When triggered by a quick-reply pill, handleUserSend streams Julian's real response)
-          if (!options.silent) {
-            this.addStylistMessage("I've selected your size and added this piece directly to your bag with 10% discount code **STYLIST10** applied!", [
-              "Complete checkout with 10% off",
-              "What shoes pair with this?",
-              "What is your return policy?"
-            ]);
-          }
-        } else if (prod.url && typeof window !== 'undefined' && window.location && prod.url !== window.location.href) {
-          window.location.href = prod.url;
-        } else if (!options.silent) {
-          this.addStylistMessage("You're ready to purchase! Scroll up to select your size and tap 'Add to Cart'.");
+        this.closeDrawer();
+        const button = document.querySelector('#add-to-cart-btn, button[name="add"], .single_add_to_cart_button, .add-to-cart');
+        if (button) {
+          button.focus({ preventScroll: true });
+          button.scrollIntoView({ block: 'center' });
         }
       });
     }

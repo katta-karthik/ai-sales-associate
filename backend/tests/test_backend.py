@@ -312,3 +312,23 @@ def test_full_conversational_turn_sequence_without_looping_or_hallucination():
         assert node != "greeting", f"Input '{user_input}' erroneously reset to 'greeting'"
         # Simulate assistant turn
         state["messages"].append(HumanMessage(content=f"Stylist response to {user_input}"))
+
+
+@pytest.mark.parametrize("route", ["/api/chat", "/api/chat/stream"])
+@pytest.mark.parametrize("budget, expected", [(150, ["linen"]), (100, [])])
+def test_merchant_discovery(route, budget, expected):
+    catalog = [
+        {"id": "linen", "title": "Linen Shirt", "price": 100},
+        {"id": "cotton", "title": "Cotton Shirt", "price": 90},
+        {"id": "sold", "title": "Linen Blazer", "price": 99, "in_stock": False},
+    ]
+    response = client.post(route, json={"message": f"Show me linen under ${budget}", "catalog": catalog})
+    assert response.status_code == 200
+    if route.endswith("/stream"):
+        events = [json.loads(line[6:]) for line in response.text.splitlines() if line.startswith("data: ")]
+        assert [e["type"] for e in events] == ["start", "token", "done"]
+        result = events[-1]
+    else:
+        result = response.json()
+    assert [item["id"] for item in result["recommended_products"]] == expected
+    assert result["show_card"] is bool(expected)

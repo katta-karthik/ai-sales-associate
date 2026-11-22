@@ -75,13 +75,15 @@ flowchart LR
     S2 --> S3["3. The Rack Pull (2-3 Curated Items)"]
     S3 --> S4["4. Fitting Room (Validation & Hero Pitch)"]
     S4 --> S5["5. Objection Handling & Bundling"]
-    S5 --> S6["6. Cashier (1-Tap Guided Checkout)"]
+    S5 --> S6["6. Review options on the merchant page"]
 ```
 
 * **Hesitation Detection:** The associate approaches only when high-intent or hesitation signals appear (e.g., toggling sizes back-and-forth, lingering on fabric details >25s).
 * **Intent-Adaptive Persona:** Adapts tone based on customer mindset (*Explorer* vs. *Evaluator* vs. *Ready Buyer*).
 * **Styling Validation:** Genuine, charismatic outfit pairing and social proof.
-* **1-Tap Checkout:** In-conversation coupon application, size confirmation, and direct checkout handoff.
+* **Catalog discovery:** On the demo store, try “Show me wool under $200”. The widget sends the store’s own catalog to the chat API. Explicit collection searches match product terms and a budget, returning up to three linked items or an empty-result message. These searches work without a model key.
+* **Purchase handoff:** A product card opens the merchant’s product page. On that page it focuses the native cart control so the shopper can review variants and confirm. Payment and order confirmation belong to the merchant.
+* **Merchant integration:** Set `window.__AI_SALES_CONFIG.catalog` to an array of up to 200 products with a title, numeric price, description and same-origin product URL. The demo builds this array from its collection grid data. The bundled backend catalog is sample inventory.
 
 ---
 
