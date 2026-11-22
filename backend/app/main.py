@@ -2,6 +2,7 @@
 import json
 import logging
 import os
+import re
 import uuid
 from typing import Any, AsyncGenerator, Dict, List, Optional
 
@@ -325,7 +326,7 @@ async def chat_stream(request: Request):
         }
         yield f"event: start\ndata: {json.dumps(meta_event)}\n\n"
 
-        # 2. Stream tokens from Groq
+        # 2. Stream tokens from Groq (Capped at 2 punchy sentences)
         full_tokens = []
         try:
             async for chunk in stream_groq_resilient(prompt_msgs):
@@ -334,6 +335,12 @@ async def chat_stream(request: Request):
                     full_tokens.append(content)
                     token_event = {"type": "token", "content": content}
                     yield f"event: token\ndata: {json.dumps(token_event)}\n\n"
+                    
+                    # Stop stream immediately once 2 full sentences have completed
+                    current_str = "".join(full_tokens)
+                    sentences = re.findall(r'[^.!?]+[.!?]', current_str)
+                    if len(sentences) >= 2:
+                        break
         except Exception as e:
             logger.error("Error during streaming: %s", e)
             error_event = {"type": "error", "error": str(e)}
@@ -341,7 +348,8 @@ async def chat_stream(request: Request):
             return
 
         # 3. Finalize state and send 'done' event with actionable payloads
-        full_text = "".join(full_tokens)
+        from backend.app.agent.graph import make_punchy
+        full_text = make_punchy("".join(full_tokens), max_sentences=2)
         state["messages"].append(AIMessage(content=full_text))
         SESSIONS[sid] = state
 

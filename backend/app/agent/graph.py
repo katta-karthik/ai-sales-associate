@@ -25,13 +25,25 @@ load_dotenv()
 logger = logging.getLogger("sales_engine.graph")
 
 
-def get_llm(temperature: float = 0.6, model: Optional[str] = None) -> ChatGroq:
-    """Initialize Groq LPU LLM client."""
+def make_punchy(text: str, max_sentences: int = 2) -> str:
+    """Ensure in-store stylist never waffles; strict 2-sentence maximum."""
+    if not text:
+        return ""
+    # Split by sentence endings (. ! ?)
+    sentences = re.split(r'(?<=[.!?])\s+', text.strip())
+    if len(sentences) > max_sentences:
+        return " ".join(sentences[:max_sentences])
+    return text.strip()
+
+
+def get_llm(temperature: float = 0.6, model: Optional[str] = None, max_tokens: int = 45) -> ChatGroq:
+    """Initialize Groq LPU LLM client with strict token ceiling for snappy in-store banter."""
     api_key = os.getenv("GROQ_API_KEY")
     target_model = model or os.getenv("GROQ_MODEL", "qwen/qwen3.8-27b")
     return ChatGroq(
         model=target_model,
         temperature=temperature,
+        max_tokens=max_tokens,
         groq_api_key=api_key,
     )
 
