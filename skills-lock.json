@@ -1,0 +1,40 @@
+{
+  "version": 2,
+  "skills": {
+    "langchain-agent-experiments": {
+      "source": "langchain-ai/langchain-skills",
+      "commit": "90e4816bebb86f1d9bb34734998276316031f6e4",
+      "sourceType": "github",
+      "skillPath": "skills/langchain-agent-experiments/SKILL.md",
+      "computedHash": "96fffa04749e7c49c000ef33be5ad7732b7c7c63bef8652f8b13ac6e688f423c"
+    },
+    "langchain-agent-monitoring": {
+      "source": "langchain-ai/langchain-skills",
+      "commit": "90e4816bebb86f1d9bb34734998276316031f6e4",
+      "sourceType": "github",
+      "skillPath": "skills/langchain-agent-monitoring/SKILL.md",
+      "computedHash": "4bc5db11059bd869c448a7e9bdbe8097a2093fe780985c426c28a9f022c623dc"
+    },
+    "langchain-agent-tracing": {
+      "source": "langchain-ai/langchain-skills",
+      "commit": "90e4816bebb86f1d9bb34734998276316031f6e4",
+      "sourceType": "github",
+      "skillPath": "skills/langchain-agent-tracing/SKILL.md",
+      "computedHash": "755dbdceeda535f453d5f919ae67a0d0db8b7ffbe1079222cf0ee1270f766a6f"
+    },
+    "langchain-build-agent": {
+      "source": "langchain-ai/langchain-skills",
+      "commit": "90e4816bebb86f1d9bb34734998276316031f6e4",
+      "sourceType": "github",
+      "skillPath": "skills/langchain-build-agent/SKILL.md",
+      "computedHash": "7632682b9610a2f51285554b5c0477d621ddafa5e7780ea7177b9ae17380ec6b"
+    },
+    "langchain-eval-engineering": {
+      "source": "langchain-ai/langchain-skills",
+      "commit": "90e4816bebb86f1d9bb34734998276316031f6e4",
+      "sourceType": "github",
+      "skillPath": "skills/langchain-eval-engineering/SKILL.md",
+      "computedHash": "a965ebbb4195275e89c130d9eff6fb1ae871f98d4f0bd3ba84a10be4cb75c05b"
+    }
+  }
+}

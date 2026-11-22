@@ -1,0 +1,267 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Karthik & Co. Modern Apparel | Unapologetic Sartorial Elegance</title>
+  <meta name="description" content="Discover modern luxury tailoring and conscious essentials crafted from superfine Italian wool, organic Supima cotton, and grade-A cashmere.">
+
+  <!-- OpenGraph Metadata -->
+  <meta property="og:site_name" content="Karthik & Co. Modern Apparel">
+  <meta property="og:title" content="Karthik & Co. Modern Apparel - Timeless Luxury Essentials">
+  <meta property="og:description" content="Physical store craftsmanship meets effortless modern style. Explore blazers, knitwear, and tailored trousers.">
+  <meta property="og:type" content="website">
+  <meta property="og:image" content="https://images.unsplash.com/photo-1490481651871-ab68de25d43d?auto=format&fit=crop&w=1200&q=80">
+
+  <!-- Google Fonts -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,500;0,600;0,700;1,400&family=Plus+Jakarta+Sans:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+
+  <!-- Storefront Stylesheet -->
+  <link rel="stylesheet" href="style.css">
+
+  <!-- AI Sales Associate Client Embed SDK -->
+  <script src="../widget/loader.js" async defer></script>
+</head>
+<body>
+
+  <!-- Top Announcement Bar -->
+  <aside class="announcement-bar" role="banner">
+    <div>
+      <span class="badge-live">LIVE</span>
+      <span>Complimentary Worldwide Express Delivery on orders over $150 &nbsp;•&nbsp; Free 30-Day Returns</span>
+    </div>
+  </aside>
+
+  <!-- Navigation Header -->
+  <div class="header-wrapper">
+    <header class="site-header">
+      <a href="index.html" class="brand-logo" aria-label="Karthik and Co. Home">
+        KARTHIK <span>&amp;</span> CO.
+      </a>
+
+      <nav class="nav-links" aria-label="Main Navigation">
+        <a href="index.html" class="active">Home</a>
+        <a href="#featured-products" data-category="men">Men</a>
+        <a href="#featured-products" data-category="women">Women</a>
+        <a href="#featured-products" data-category="accessories">Accessories</a>
+        <a href="#about-story">Lookbook</a>
+      </nav>
+
+      <div class="nav-actions">
+        <button class="action-icon-btn" aria-label="Search Catalog" title="Search">
+          <svg width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" viewBox="0 0 24 24"><circle cx="11" cy="11" r="8"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line></svg>
+        </button>
+        <button class="action-icon-btn" aria-label="Shopping Cart" id="header-cart-btn" title="View Cart">
+          <svg width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" viewBox="0 0 24 24"><path d="M6 2L3 6v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V6l-3-4z"></path><line x1="3" y1="6" x2="21" y2="6"></line><path d="M16 10a4 4 0 0 1-8 0"></path></svg>
+          <span class="cart-count-badge">0</span>
+        </button>
+      </div>
+    </header>
+  </div>
+
+  <!-- Hero Banner -->
+  <main>
+    <section class="hero-section" aria-label="Hero Collection Showcase">
+      <img src="https://images.unsplash.com/photo-1490481651871-ab68de25d43d?auto=format&fit=crop&w=1800&q=80" alt="Autumn/Winter Tailoring Campaign" class="hero-bg-media">
+      <div class="hero-overlay"></div>
+      <div class="hero-container">
+        <div class="hero-tag">
+          <span>◆</span> 2026 Collection Premiere
+        </div>
+        <h1 class="hero-title">Refined Silhouettes for the Unapologetic</h1>
+        <p class="hero-subtitle">
+          Pure Italian wool, long-staple organic cotton, and Grade-A cashmere. Designed with architectural precision for effortless presence in every room.
+        </p>
+        <div class="hero-cta-group">
+          <a href="#featured-products" class="btn-primary">Explore The Rack</a>
+          <a href="product.html?id=sovereign-blazer" class="btn-outline">View Flagship Blazer</a>
+        </div>
+      </div>
+    </section>
+
+    <!-- Category Filter Bar -->
+    <section class="category-filter-section" id="featured-products">
+      <div class="section-header">
+        <span class="section-kicker">Curated Essentials</span>
+        <h2 class="section-title">The Current Collection</h2>
+      </div>
+
+      <div class="filter-tabs" role="tablist">
+        <button class="filter-tab active" data-filter="all" role="tab" aria-selected="true">All Pieces</button>
+        <button class="filter-tab" data-filter="men" role="tab" aria-selected="false">Men's Tailoring</button>
+        <button class="filter-tab" data-filter="women" role="tab" aria-selected="false">Women's Modern</button>
+        <button class="filter-tab" data-filter="accessories" role="tab" aria-selected="false">Handcrafted Leather</button>
+      </div>
+    </section>
+
+    <!-- Product Grid -->
+    <section class="product-grid-section">
+      <div class="product-grid" id="products-container">
+        <!-- Products injected dynamically or rendered as fallbacks below -->
+      </div>
+    </section>
+
+    <!-- Value Propositions -->
+    <section class="value-props-section" id="about-story">
+      <div class="value-props-grid">
+        <div class="value-prop-card">
+          <div class="prop-icon">🧵</div>
+          <div class="prop-content">
+            <h4>Bespoke Italian Heritage</h4>
+            <p>Every jacket and overcoat is constructed using natural canvas interlinings woven in historic northern Italian mills.</p>
+          </div>
+        </div>
+        <div class="value-prop-card">
+          <div class="prop-icon">🌱</div>
+          <div class="prop-content">
+            <h4>100% Traceable Fibers</h4>
+            <p>From organic Californian Supima cotton to cruelty-free inner Mongolian cashmere, zero compromise on ethics.</p>
+          </div>
+        </div>
+        <div class="value-prop-card">
+          <div class="prop-icon">✨</div>
+          <div class="prop-content">
+            <h4>AI Digital Shop-Floor Stylist</h4>
+            <p>Experience personalized fit advice, outfit pairing, and confident styling guidance 24/7 in real time.</p>
+          </div>
+        </div>
+        <div class="value-prop-card">
+          <div class="prop-icon">📦</div>
+          <div class="prop-content">
+            <h4>Frictionless Handoff</h4>
+            <p>Enjoy complimentary 2-day express shipping, luxury gift packaging, and seamless 30-day doorstep returns.</p>
+          </div>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <!-- Site Footer -->
+  <footer class="site-footer">
+    <div class="footer-inner">
+      <div class="footer-brand">
+        <h3>KARTHIK &amp; CO.</h3>
+        <p>A modern sartorial fashion house delivering timeless silhouettes and uncompromising material integrity for the discerning individual.</p>
+      </div>
+
+      <div class="footer-col">
+        <h5>Collections</h5>
+        <ul>
+          <li><a href="#featured-products" data-category="men">Men's Tailoring</a></li>
+          <li><a href="#featured-products" data-category="women">Women's Knitwear</a></li>
+          <li><a href="#featured-products" data-category="accessories">Artisanal Leather</a></li>
+          <li><a href="product.html?id=sovereign-blazer">Flagship Merino Blazer</a></li>
+        </ul>
+      </div>
+
+      <div class="footer-col">
+        <h5>Concierge</h5>
+        <ul>
+          <li><a href="#">Styling Consultations</a></li>
+          <li><a href="#">Size &amp; Fit Guide</a></li>
+          <li><a href="#">Complimentary Alterations</a></li>
+          <li><a href="#">Track Order</a></li>
+        </ul>
+      </div>
+
+      <div class="footer-col">
+        <h5>Flagship Atelier</h5>
+        <p style="font-size: 13px; line-height: 1.6; margin-bottom: 12px;">
+          442 Madison Avenue, 4th Floor<br>
+          New York, NY 10022<br>
+          atelier@karthikandco.com
+        </p>
+      </div>
+    </div>
+
+    <div class="footer-bottom">
+      <div>&copy; 2026 Karthik &amp; Co. Modern Apparel Inc. All rights reserved.</div>
+      <div style="display: flex; gap: 20px;">
+        <a href="#" style="color: #6b7280; text-decoration: none;">Privacy Policy</a>
+        <a href="#" style="color: #6b7280; text-decoration: none;">Terms of Service</a>
+      </div>
+    </div>
+  </footer>
+
+  <!-- Store State & Catalog Scripts -->
+  <script src="products.js"></script>
+  <script>
+    document.addEventListener('DOMContentLoaded', () => {
+      const container = document.getElementById('products-container');
+      const tabs = document.querySelectorAll('.filter-tab');
+
+      function renderProducts(filter = 'all') {
+        const productList = Object.values(STORE_CATALOG).filter(p => {
+          if (filter === 'all') return true;
+          return p.category === filter;
+        });
+
+        container.innerHTML = productList.map(product => `
+          <a href="product.html?id=${product.id}" class="product-card" data-category="${product.category}" id="card-${product.id}">
+            <div class="product-card-media">
+              <span class="product-badge ${product.badge === 'Bestseller' ? 'gold' : ''}">${product.badge}</span>
+              <img src="${product.images[0].url}" alt="${product.images[0].alt}" loading="lazy">
+            </div>
+            <div class="product-card-content">
+              <span class="product-card-category">${product.categoryLabel}</span>
+              <h3 class="product-card-title">${product.title}</h3>
+              <p class="product-card-desc">${product.shortDescription}</p>
+              <div class="product-card-footer">
+                <div class="product-price-wrapper">
+                  <span class="product-card-price">$${product.price.toFixed(2)}</span>
+                  ${product.compareAtPrice ? `<span class="product-card-compare-price">$${product.compareAtPrice.toFixed(2)}</span>` : ''}
+                </div>
+                <span class="product-card-btn">View Piece &rarr;</span>
+              </div>
+            </div>
+          </a>
+        `).join('');
+      }
+
+      // Initial render
+      renderProducts('all');
+
+      // Filter Tab Click Handlers
+      tabs.forEach(tab => {
+        tab.addEventListener('click', () => {
+          tabs.forEach(t => {
+            t.classList.remove('active');
+            t.setAttribute('aria-selected', 'false');
+          });
+          tab.classList.add('active');
+          tab.setAttribute('aria-selected', 'true');
+          const filter = tab.getAttribute('data-filter');
+          renderProducts(filter);
+        });
+      });
+
+      // Quick nav links to category filters
+      document.querySelectorAll('[data-category]').forEach(link => {
+        link.addEventListener('click', (e) => {
+          const category = link.getAttribute('data-category');
+          const matchingTab = document.querySelector(`.filter-tab[data-filter="${category}"]`);
+          if (matchingTab) {
+            matchingTab.click();
+          }
+        });
+      });
+
+      // Header Cart Click
+      const cartBtn = document.getElementById('header-cart-btn');
+      if (cartBtn) {
+        cartBtn.addEventListener('click', () => {
+          const count = window.StoreApp.getCartCount();
+          if (count === 0) {
+            window.StoreApp.showToast('Your shopping bag is currently empty. Explore our collection!');
+          } else {
+            const summary = window.StoreApp.cart.map(i => `${i.title} (${i.size}) x${i.quantity || 1}`).join(', ');
+            window.StoreApp.showToast(`Bag (${count} items): ${summary}`);
+          }
+        });
+      }
+    });
+  </script>
+</body>
+</html>
