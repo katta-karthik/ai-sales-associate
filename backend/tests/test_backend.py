@@ -150,3 +150,141 @@ def test_api_reset_session():
     res = client.post("/api/reset", json={"session_id": "test-session-sync"})
     assert res.status_code == 200
     assert res.json()["status"] == "reset"
+
+
+def test_multiturn_session_persistence_and_no_amnesia():
+    """Verify multi-turn session persistence eliminates conversational amnesia and greeting resets."""
+    from backend.app.main import SESSIONS
+    sid = "test-session-marriage-flow"
+
+    # Turn 1: User indicates shopping for a marriage
+    p1 = {
+        "message": "yes for marraige",
+        "thread_id": sid,
+        "product_context": {
+            "title": "The Sovereign Merino Wool Blazer",
+            "price": "349.00",
+            "material": "100% Superfine 120s Italian Merino Wool",
+            "variants": {"sizes": ["S", "M", "L", "XL"]}
+        }
+    }
+    res1 = client.post("/api/chat", json=p1)
+    assert res1.status_code == 200
+    data1 = res1.json()
+    assert data1["session_id"] == sid
+    assert data1["node"] == "discovery"
+    assert "<pills>" not in data1["message"]
+    assert sid in SESSIONS
+    assert len(SESSIONS[sid]["messages"]) == 2
+
+    # Turn 2: User answers short follow-up "reception"
+    p2 = {
+        "message": "reception",
+        "session_id": sid
+    }
+    res2 = client.post("/api/chat", json=p2)
+    assert res2.status_code == 200
+    data2 = res2.json()
+    assert data2["session_id"] == sid
+    # Must NOT reset to greeting!
+    assert data2["node"] in ["discovery", "curation", "validation"]
+    assert data2["node"] != "greeting"
+    assert "welcome to karthik & co." not in data2["message"].lower()
+    # Check that session retained all 4 messages
+    assert len(SESSIONS[sid]["messages"]) == 4
+
+
+def test_product_context_normalization_and_dynamic_discount():
+    """Verify live PDP product data is normalized and discount computed dynamically."""
+    sid = "test-session-live-product"
+    payload = {
+        "message": "Apply the 10% discount and let's buy",
+        "session_id": sid,
+        "product_context": {
+            "title": "The Sovereign Merino Wool Blazer",
+            "price": "349.00",
+            "currency": "$",
+            "variants": {"sizes": ["S", "M", "L", "XL"]}
+        }
+    }
+    res = client.post("/api/chat", json=payload)
+    assert res.status_code == 200
+    data = res.json()
+    assert data["node"] == "action"
+    assert data["action_payload"] is not None
+    action = data["action_payload"]
+    assert action["original_price"] == 349.0
+    assert action["discounted_price"] == 314.10
+    assert action["discount_code"] == "STYLIST10"
+    assert "Sovereign" in action["product_name"]
+
+
+def test_chitchat_routing_no_greeting_reset():
+    """Verify chit-chat like 'what is ur name' and 'are u biased' do not trigger initial greeting."""
+    state = init_sales_state()
+
+    state["messages"] = [HumanMessage(content="what is ur name")]
+    node1 = classify_intent(state)
+    assert node1 != "greeting"
+    assert node1 == "discovery"
+
+    state["messages"] = [HumanMessage(content="are u biased")]
+    node2 = classify_intent(state)
+    assert node2 != "greeting"
+    assert node2 == "discovery"
+
+
+def test_stream_with_thread_id_and_dynamic_pills():
+    """Verify SSE streaming with thread_id extracts dynamic pills into done event."""
+    payload = {
+        "message": "What should I pair with this blazer for an evening dinner?",
+        "thread_id": "test-stream-pills-session",
+        "product_context": {
+            "title": "The Sovereign Merino Wool Blazer",
+            "price": 349.00
+        }
+    }
+    with client.stream("POST", "/api/chat/stream", json=payload) as response:
+        assert response.status_code == 200
+        lines = [line.decode("utf-8") if isinstance(line, bytes) else line for line in response.iter_lines()]
+        
+        # Verify done event
+        done_lines = [l for l in lines if l.startswith("data: ") and '"type": "done"' in l]
+        assert len(done_lines) > 0
+        done_data = json.loads(done_lines[0][6:])
+        assert done_data["session_id"] == "test-stream-pills-session"
+        assert len(done_data["quick_replies"]) > 0
+        assert "<pills>" not in done_data["message"]
+
+
+def test_full_conversational_turn_sequence_without_looping_or_hallucination():
+    """Verify entire sequence of dialogue from task prompt eliminates amnesia and looping pills."""
+    state = init_sales_state(viewed_products=[{
+        "id": "merino-blazer",
+        "name": "The Sovereign Merino Wool Blazer",
+        "title": "The Sovereign Merino Wool Blazer",
+        "price": 349.0,
+        "material": "100% Merino Wool",
+        "variants": {"sizes": ["38R", "40R", "42R"]}
+    }])
+
+    test_turns = [
+        ("Just browsing fresh styles", ["curation", "discovery"]),
+        ("Check my size", ["objection"]),
+        ("What should I pair with this?", ["validation"]),
+        ("what is ur name", ["discovery"]),
+        ("are u based", ["discovery"]),
+        ("are u biased", ["discovery"]),
+        ("i don't like this", ["curation"]),
+        ("yes for marraige", ["discovery"]),
+        ("reception", ["discovery", "validation"]),
+        ("Apply the 10% discount and let's buy", ["action"]),
+    ]
+
+    for user_input, expected_nodes in test_turns:
+        state["messages"].append(HumanMessage(content=user_input))
+        node = classify_intent(state)
+        assert node in expected_nodes, f"Input '{user_input}' classified as '{node}', expected one of {expected_nodes}"
+        assert node != "greeting", f"Input '{user_input}' erroneously reset to 'greeting'"
+        # Simulate assistant turn
+        state["messages"].append(HumanMessage(content=f"Stylist response to {user_input}"))

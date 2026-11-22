@@ -117,6 +117,9 @@
             dwellThresholdMs: 20000,
             cooldownMs: 45000
           });
+          if (widgetElement) {
+            widgetElement.hesitationMatrix = hesitationInstance;
+          }
 
           hesitationInstance.onHesitation((trigger) => {
             if (widgetElement && typeof widgetElement.handleHesitationTrigger === 'function') {

@@ -29,8 +29,12 @@ from langchain_groq import ChatGroq
 from backend.app.agent.graph import (
     build_node_prompt,
     classify_intent,
+    extract_pills_and_clean_message,
     format_product_context,
     get_llm,
+    invoke_groq_resilient,
+    make_punchy,
+    parse_price,
     sales_graph,
     stream_groq_resilient,
 )
@@ -62,7 +66,9 @@ app.add_middleware(
 class ChatRequest(BaseModel):
     message: Optional[str] = Field(default=None, description="User message or prompt")
     session_id: Optional[str] = Field(default=None, description="Session ID for thread memory")
+    thread_id: Optional[str] = Field(default=None, description="Alias for session_id")
     product: Optional[Dict[str, Any]] = Field(default=None, description="Currently viewed product on PDP")
+    product_context: Optional[Dict[str, Any]] = Field(default=None, description="Alias for product")
     event: Optional[str] = Field(default="chat", description="Event trigger (chat, hesitation, approach)")
     occasion: Optional[str] = Field(default=None, description="Optional occasion filter")
 
@@ -80,17 +86,38 @@ class ChatResponse(BaseModel):
 
 # ==================== HELPERS ====================
 
+def is_valid_product(prod: Optional[Dict[str, Any]]) -> bool:
+    """Validate whether dict represents an actual product with name/title or id."""
+    if not prod or not isinstance(prod, dict):
+        return False
+    return bool(prod.get("id") or prod.get("name") or prod.get("title"))
+
+
 def get_or_create_session(session_id: Optional[str], viewed_product: Optional[Dict[str, Any]] = None) -> tuple[str, SalesState]:
     """Retrieve existing session or instantiate a fresh SalesState."""
     sid = session_id or str(uuid.uuid4())
+    valid_prod = viewed_product if is_valid_product(viewed_product) else None
+
     if sid not in SESSIONS:
-        viewed_list = [viewed_product] if viewed_product else [CATALOG_ITEMS[0]]
+        viewed_list = [valid_prod] if valid_prod else [CATALOG_ITEMS[0]]
         SESSIONS[sid] = init_sales_state(viewed_products=viewed_list)
-    elif viewed_product:
-        # Update currently viewed product if provided
+    elif valid_prod:
+        # Update currently viewed product if provided, keeping multi-turn history intact
         existing = SESSIONS[sid].get("viewed_products", [])
-        if not any(p.get("id") == viewed_product.get("id") for p in existing):
-            SESSIONS[sid]["viewed_products"] = [viewed_product] + existing
+        prod_id = valid_prod.get("id") or valid_prod.get("title") or valid_prod.get("name")
+        match_idx = -1
+        for idx, p in enumerate(existing):
+            p_id = p.get("id") or p.get("title") or p.get("name")
+            if p_id and p_id == prod_id:
+                match_idx = idx
+                break
+        if match_idx >= 0:
+            existing[match_idx] = valid_prod
+            if match_idx > 0:
+                existing.insert(0, existing.pop(match_idx))
+        else:
+            SESSIONS[sid]["viewed_products"] = [valid_prod] + existing
+
     return sid, SESSIONS[sid]
 
 
@@ -105,48 +132,70 @@ def resolve_node_metadata(node: str, state: SalesState, user_text: str = "") -> 
     text_lower = user_text.lower().strip()
 
     show_card = False
+    target_price = parse_price(target.get("price", 100.0))
+    discounted_price = round(target_price * 0.9, 2)
+    target_name = target.get("title") or target.get("name") or "Featured Piece"
+    sizes_avail = target.get("sizes") or (target.get("variants", {}).get("sizes") if isinstance(target.get("variants"), dict) else [])
 
     if node == "action" or any(w in text_lower for w in ["buy", "checkout", "grab it", "apply", "discount", "lock it in"]):
         stage = "READY_TO_BUY"
         show_card = True
-        discounted_price = round(target.get("price", 100.0) * 0.9, 2)
         action = {
             "type": "checkout",
             "product_id": target.get("id"),
-            "product_name": target.get("name"),
-            "original_price": target.get("price"),
+            "product_name": target_name,
+            "original_price": target_price,
             "discounted_price": discounted_price,
             "discount_code": "STYLIST10",
             "checkout_url": f"/checkout?item={target.get('id')}&discount=STYLIST10",
-            "sizes_available": target.get("sizes", []),
+            "sizes_available": sizes_avail,
         }
         replies = [
-            "Complete checkout with 10% off",
+            f"Complete checkout (${discounted_price:.2f})",
             "What shoes pair with this?",
             "What is your return policy?"
         ]
         recs = [target]
 
-    elif any(w in text_lower for w in ["size", "sizing", "fit", "small", "large", "measure"]):
+    elif any(w in text_lower for w in ["size", "sizing", "fit", "measure", "height", "weight"]) or (sizes_avail and any(s.lower() in text_lower for s in sizes_avail)):
         stage = "EVALUATOR"
         show_card = False
         action = None
         recs = []
-        replies = [
-            "I'm between Medium and Large",
-            "Does this fabric have stretch?",
-            "Apply the 10% discount and let's buy"
-        ]
+        if sizes_avail and len(sizes_avail) >= 2:
+            replies = [f"I wear {s}" for s in sizes_avail[:3]]
+        else:
+            replies = [
+                "I'm between Medium and Large",
+                "Does this fabric have stretch?",
+                "Apply the 10% discount and let's buy"
+            ]
 
-    elif any(w in text_lower for w in ["pair", "match", "shoes", "pants", "look", "suit", "cocktail", "wedding", "dinner"]):
+    elif any(w in text_lower for w in ["pair", "match", "shoes", "pants", "look", "suit", "cocktail", "wedding", "marriage", "marraige", "reception", "dinner"]):
         stage = "EVALUATOR"
         show_card = False
         action = None
         recs = []
+        if any(w in text_lower for w in ["wedding", "marriage", "marraige"]):
+            replies = ["Ceremony", "Evening Reception", "Both events"]
+        elif any(w in text_lower for w in ["reception", "ceremony"]):
+            replies = ["What shoes work best?", "Check my size", "Apply 10% discount and let's buy"]
+        else:
+            replies = [
+                "What shoes work best?",
+                "Can I dress this down casually?",
+                "I love it, let's grab it!"
+            ]
+
+    elif any(w in text_lower for w in ["name", "biased", "based", "who are you", "who r u"]):
+        stage = "EXPLORER"
+        show_card = False
+        action = None
+        recs = []
         replies = [
-            "What shoes work best?",
-            "Can I dress this down casually?",
-            "I love it, let's grab it!"
+            "Shopping for an occasion",
+            "Just browsing fresh styles",
+            "Check size & fit"
         ]
 
     elif node == "greeting":
@@ -164,7 +213,7 @@ def resolve_node_metadata(node: str, state: SalesState, user_text: str = "") -> 
         stage = "EVALUATOR"
         show_card = True
         action = None
-        recs = curated if curated else CATALOG_ITEMS[:2]
+        recs = curated if curated else (viewed[:2] if viewed else CATALOG_ITEMS[:2])
         replies = [
             "How does the sizing run?",
             "What fabric is this made of?",
@@ -176,11 +225,16 @@ def resolve_node_metadata(node: str, state: SalesState, user_text: str = "") -> 
         show_card = False
         action = None
         recs = []
-        replies = [
-            "Check my size",
-            "How should I style this?",
-            "Apply the 10% discount"
-        ]
+        if any(w in text_lower for w in ["wedding", "marriage", "marraige"]):
+            replies = ["Ceremony", "Evening Reception", "Both events"]
+        elif any(w in text_lower for w in ["reception", "ceremony"]):
+            replies = ["What shoes work best?", "Check my size", "Apply 10% discount and let's buy"]
+        else:
+            replies = [
+                "Check my size",
+                "How should I style this?",
+                "Apply the 10% discount"
+            ]
 
     return stage, replies, recs, action, show_card
 
@@ -234,7 +288,9 @@ def get_catalog_product(product_id: str):
 @app.post("/api/chat", response_model=ChatResponse)
 def chat_sync(req: ChatRequest):
     """Non-streaming synchronous chat endpoint for full response roundtrip."""
-    sid, state = get_or_create_session(req.session_id, req.product)
+    session_id_val = req.session_id or req.thread_id
+    product_val = req.product or req.product_context
+    sid, state = get_or_create_session(session_id_val, product_val)
 
     if req.message:
         state["messages"].append(HumanMessage(content=req.message))
@@ -253,18 +309,21 @@ def chat_sync(req: ChatRequest):
 
     # Run LangGraph step
     prompt_msgs = build_node_prompt(node, state)
-    from backend.app.agent.graph import invoke_groq_resilient
     ai_resp = invoke_groq_resilient(prompt_msgs)
 
-    state["messages"].append(ai_resp)
+    # Extract dynamic pills and clean message
+    clean_message, dynamic_replies = extract_pills_and_clean_message(ai_resp.content, replies)
+    clean_ai_message = AIMessage(content=clean_message)
+    state["messages"].append(clean_ai_message)
+    state["quick_replies"] = dynamic_replies
     SESSIONS[sid] = state
 
     return ChatResponse(
         session_id=sid,
         node=node,
         intent_stage=stage,
-        message=ai_resp.content,
-        quick_replies=replies,
+        message=clean_message,
+        quick_replies=dynamic_replies,
         recommended_products=recs,
         action_payload=action,
         show_card=show_card,
@@ -285,13 +344,13 @@ async def chat_stream(request: Request):
         except Exception:
             body = {}
         message = body.get("message")
-        session_id = body.get("session_id")
-        product = body.get("product")
+        session_id = body.get("session_id") or body.get("thread_id")
+        product = body.get("product") or body.get("product_context")
         event = body.get("event", "chat")
     else:
         params = request.query_params
         message = params.get("message")
-        session_id = params.get("session_id")
+        session_id = params.get("session_id") or params.get("thread_id")
         product_id = params.get("product_id")
         product = get_product(product_id) if product_id else None
         event = params.get("event", "chat")
@@ -326,20 +385,26 @@ async def chat_stream(request: Request):
         }
         yield f"event: start\ndata: {json.dumps(meta_event)}\n\n"
 
-        # 2. Stream tokens from Groq (Capped at 2 punchy sentences)
+        # 2. Stream tokens from Groq
         full_tokens = []
+        in_pills = False
         try:
             async for chunk in stream_groq_resilient(prompt_msgs):
                 content = chunk.content
                 if content:
                     full_tokens.append(content)
-                    token_event = {"type": "token", "content": content}
-                    yield f"event: token\ndata: {json.dumps(token_event)}\n\n"
-                    
-                    # Stop stream immediately once 2 full sentences have completed
                     current_str = "".join(full_tokens)
-                    sentences = re.findall(r'[^.!?]+[.!?]', current_str)
-                    if len(sentences) >= 2:
+
+                    # Once <pills tag starts, do not stream pill syntax into the chat bubble
+                    if "<pills" in current_str:
+                        in_pills = True
+
+                    if not in_pills:
+                        token_event = {"type": "token", "content": content}
+                        yield f"event: token\ndata: {json.dumps(token_event)}\n\n"
+
+                    # If </pills> tag is closed, stream is complete
+                    if "</pills>" in current_str:
                         break
         except Exception as e:
             logger.error("Error during streaming: %s", e)
@@ -347,10 +412,12 @@ async def chat_stream(request: Request):
             yield f"event: error\ndata: {json.dumps(error_event)}\n\n"
             return
 
-        # 3. Finalize state and send 'done' event with actionable payloads
-        from backend.app.agent.graph import make_punchy
-        full_text = make_punchy("".join(full_tokens), max_sentences=2)
-        state["messages"].append(AIMessage(content=full_text))
+        # 3. Finalize state and send 'done' event with actionable payloads & dynamic quick replies
+        raw_text = "".join(full_tokens)
+        clean_text, dynamic_replies = extract_pills_and_clean_message(raw_text, replies)
+        clean_ai_msg = AIMessage(content=clean_text)
+        state["messages"].append(clean_ai_msg)
+        state["quick_replies"] = dynamic_replies
         SESSIONS[sid] = state
 
         done_event = {
@@ -358,8 +425,8 @@ async def chat_stream(request: Request):
             "session_id": sid,
             "node": node,
             "intent_stage": stage,
-            "message": full_text,
-            "quick_replies": replies,
+            "message": clean_text,
+            "quick_replies": dynamic_replies,
             "recommended_products": recs,
             "action_payload": action,
             "show_card": show_card,

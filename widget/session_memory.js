@@ -57,15 +57,6 @@
       this.inMemoryStore[fullKey] = value;
     }
 
-    _initThreadId() {
-      let id = this._getItem('thread_id');
-      if (!id) {
-        id = this._generateUUID();
-        this._setItem('thread_id', id);
-      }
-      return id;
-    }
-
     _generateUUID() {
       if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
         return crypto.randomUUID();
@@ -77,8 +68,29 @@
       });
     }
 
+    _initThreadId() {
+      let id = this._getItem('session_id') || this._getItem('thread_id');
+      if (!id) {
+        id = this._generateUUID();
+      }
+      this._setItem('session_id', id);
+      this._setItem('thread_id', id);
+      return id;
+    }
+
+    getSessionId() {
+      return this.threadId;
+    }
+
     getThreadId() {
       return this.threadId;
+    }
+
+    setSessionId(id) {
+      if (!id) return;
+      this.threadId = id;
+      this._setItem('session_id', id);
+      this._setItem('thread_id', id);
     }
 
     recordProductView(product) {
@@ -117,6 +129,14 @@
 
     getChatHistory() {
       return this._getItem('chat_history', []);
+    }
+
+    clearChatHistory() {
+      this._setItem('chat_history', []);
+      const fullKey = `${STORAGE_KEY_PREFIX}chat_history`;
+      if (this.inMemoryStore[fullKey]) {
+        delete this.inMemoryStore[fullKey];
+      }
     }
 
     saveChatMessage(msg) {
@@ -167,7 +187,7 @@
     }
 
     clear() {
-      const keys = ['thread_id', 'viewed_products', 'chat_history', 'intent_stage', 'drawer_state', 'hesitation_signals'];
+      const keys = ['session_id', 'thread_id', 'viewed_products', 'chat_history', 'intent_stage', 'drawer_state', 'hesitation_signals'];
       for (const k of keys) {
         const fullKey = `${STORAGE_KEY_PREFIX}${k}`;
         if (this.isStorageAvailable) {
@@ -185,7 +205,9 @@
 
   window.__AISalesAssociateSessionMemory = {
     instance: memoryInstance,
+    getSessionId: () => memoryInstance.getSessionId(),
     getThreadId: () => memoryInstance.getThreadId(),
+    setSessionId: (id) => memoryInstance.setSessionId(id),
     recordProductView: (p) => memoryInstance.recordProductView(p),
     getViewedProducts: () => memoryInstance.getViewedProducts(),
     getChatHistory: () => memoryInstance.getChatHistory(),

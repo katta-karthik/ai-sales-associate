@@ -73,6 +73,7 @@
       const currency = jsonLd.currency || meta.currency || dom.currency || '$';
       const image = jsonLd.image || meta.image || dom.image || '';
       const description = jsonLd.description || meta.description || dom.description || '';
+      const material = jsonLd.material || dom.material || '';
       const brand = jsonLd.brand || meta.brand || dom.brand || 'Karthik & Co.';
       const sku = jsonLd.sku || dom.sku || '';
       const availability = jsonLd.availability || dom.availability || 'InStock';
@@ -95,15 +96,19 @@
       return {
         isProductPage,
         id: sku || title.toLowerCase().replace(/[^a-z0-9]+/g, '-').slice(0, 32),
+        name: this._cleanText(title),
         title: this._cleanText(title),
         price: this._cleanPrice(price),
         currency: currency.replace(/USD/i, '$'),
         description: this._cleanText(description),
+        material: this._cleanText(material),
         image,
         brand: this._cleanText(brand),
         sku,
         availability,
         variants,
+        sizes: variants.sizes || [],
+        colors: variants.colors || [],
         selectedVariant,
         ctaButtons,
         url: loc.href
@@ -212,6 +217,16 @@
         dom.description = descEl.textContent;
       }
 
+      // Material detection
+      const materialEl = document.querySelector('[itemprop="material"], .product-material, #acc-body-fabric, #pdp-bullet-points');
+      if (materialEl) {
+        const text = materialEl.textContent || '';
+        const match = text.match(/\b(100%[^\n,.]*|merino wool|wool|linen|cotton|silk|cashmere|leather)[^,.\n]*/i);
+        if (match) {
+          dom.material = match[0].trim();
+        }
+      }
+
       // CTAs
       const addToCartEl = document.querySelector('#add-to-cart, #add-to-cart-btn, .add-to-cart, button[name="add"], .btn-add-to-cart, [data-action="add-to-cart"]');
       if (addToCartEl) {
@@ -224,8 +239,8 @@
         dom.ctaButtons.buyNow = buyNowEl.id ? `#${buyNowEl.id}` : '.buy-now';
       }
 
-      // Variant detection (Size / Color buttons or swatches)
-      const sizeElements = document.querySelectorAll('.size-option, .size-btn, [data-variant-type="size"], input[name="size"], button[data-size]');
+      // Variant detection (Size buttons, swatches, radio inputs, and <select> dropdowns)
+      const sizeElements = document.querySelectorAll('.size-option, .size-btn, [data-variant-type="size"], input[name*="size" i], button[data-size]');
       if (sizeElements.length > 0) {
         dom.isProduct = true;
         sizeElements.forEach((el) => {
@@ -239,7 +254,22 @@
         });
       }
 
-      const colorElements = document.querySelectorAll('.color-swatch, .color-btn, [data-variant-type="color"], input[name="color"], button[data-color]');
+      // Check for <select> size dropdowns (Shopify, WooCommerce, Magento, etc.)
+      const sizeSelects = document.querySelectorAll('select[name*="size" i], select#size, select[id*="size" i], select[name="id"]');
+      sizeSelects.forEach((sel) => {
+        dom.isProduct = true;
+        Array.from(sel.options || []).forEach((opt) => {
+          const val = (opt.text || opt.value || '').trim();
+          if (val && !dom.variants.sizes.includes(val) && !val.toLowerCase().includes('select size') && !val.toLowerCase().includes('choose')) {
+            dom.variants.sizes.push(val);
+          }
+          if (opt.selected && val && !val.toLowerCase().includes('select size')) {
+            dom.selectedVariant.size = val;
+          }
+        });
+      });
+
+      const colorElements = document.querySelectorAll('.color-swatch, .color-btn, [data-variant-type="color"], input[name*="color" i], button[data-color]');
       if (colorElements.length > 0) {
         dom.isProduct = true;
         colorElements.forEach((el) => {
@@ -252,6 +282,20 @@
           }
         });
       }
+
+      const colorSelects = document.querySelectorAll('select[name*="color" i], select#color, select[id*="color" i]');
+      colorSelects.forEach((sel) => {
+        dom.isProduct = true;
+        Array.from(sel.options || []).forEach((opt) => {
+          const val = (opt.text || opt.value || '').trim();
+          if (val && !dom.variants.colors.includes(val) && !val.toLowerCase().includes('select color')) {
+            dom.variants.colors.push(val);
+          }
+          if (opt.selected && val) {
+            dom.selectedVariant.color = val;
+          }
+        });
+      });
 
       return dom;
     }

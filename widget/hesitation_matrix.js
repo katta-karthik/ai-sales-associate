@@ -26,6 +26,7 @@
       this.startTime = Date.now();
       this.dwellTimer = null;
       this.isDestroyed = false;
+      this.isPaused = false;
 
       // Scroll tracking
       this.lastScrollY = window.scrollY || window.pageYOffset || 0;
@@ -63,8 +64,22 @@
       }
     }
 
-    emitHesitation(trigger) {
+    pause() {
+      this.isPaused = true;
+      if (this.dwellTimer) {
+        clearTimeout(this.dwellTimer);
+        this.dwellTimer = null;
+      }
+    }
+
+    resume() {
       if (this.isDestroyed) return;
+      this.isPaused = false;
+      this.startDwellTracking();
+    }
+
+    emitHesitation(trigger) {
+      if (this.isDestroyed || this.isPaused) return;
       const now = Date.now();
 
       // Respect global nudge cooldown
@@ -93,10 +108,11 @@
 
     startDwellTracking() {
       if (this.dwellTimer) clearTimeout(this.dwellTimer);
+      if (this.isPaused || this.isDestroyed) return;
 
       this.dwellTimer = setTimeout(() => {
         shield.executeSafe(() => {
-          if (document.visibilityState === 'visible' && !this.isDestroyed) {
+          if (document.visibilityState === 'visible' && !this.isDestroyed && !this.isPaused) {
             this.emitHesitation({
               type: 'DWELL_SPIKE',
               confidence: 0.85,
@@ -215,6 +231,11 @@
 
   window.__AISalesAssociateHesitationMatrix = {
     HesitationMatrix,
-    create: (options) => new HesitationMatrix(options)
+    instance: null,
+    create: (options) => {
+      const inst = new HesitationMatrix(options);
+      window.__AISalesAssociateHesitationMatrix.instance = inst;
+      return inst;
+    }
   };
 })(window, document);

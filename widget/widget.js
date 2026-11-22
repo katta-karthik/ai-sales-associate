@@ -780,6 +780,7 @@
       const btnDismissBubble = this.shadow.getElementById('btnDismissBubble');
       const btnOpenFromBubble = this.shadow.getElementById('btnOpenFromBubble');
       const chatForm = this.shadow.getElementById('chatForm');
+      const chatInput = this.shadow.getElementById('chatInput');
 
       pill.addEventListener('click', () => this.toggleDrawer());
       btnClose.addEventListener('click', () => this.closeDrawer());
@@ -789,6 +790,11 @@
         this.dismissBubble();
         this.openDrawer();
       });
+
+      if (chatInput) {
+        chatInput.addEventListener('focus', () => this.pauseHesitation());
+        chatInput.addEventListener('input', () => this.pauseHesitation());
+      }
 
       chatForm.addEventListener('submit', (e) => {
         e.preventDefault();
@@ -801,6 +807,22 @@
       });
     }
 
+    pauseHesitation() {
+      if (this.hesitationMatrix && typeof this.hesitationMatrix.pause === 'function') {
+        this.hesitationMatrix.pause();
+      } else if (window.__AISalesAssociateHesitationMatrix?.instance?.pause) {
+        window.__AISalesAssociateHesitationMatrix.instance.pause();
+      }
+    }
+
+    resumeHesitation() {
+      if (this.hesitationMatrix && typeof this.hesitationMatrix.resume === 'function') {
+        this.hesitationMatrix.resume();
+      } else if (window.__AISalesAssociateHesitationMatrix?.instance?.resume) {
+        window.__AISalesAssociateHesitationMatrix.instance.resume();
+      }
+    }
+
     configure(options = {}) {
       if (options.backendUrl) {
         this.backendUrl = options.backendUrl.replace(/\/$/, '');
@@ -808,10 +830,28 @@
       if (options.currentProduct) {
         this.currentProduct = options.currentProduct;
       }
+      if (options.hesitationMatrix) {
+        this.hesitationMatrix = options.hesitationMatrix;
+      }
     }
 
     setProductContext(product) {
       this.currentProduct = product;
+      // If thread only contains initial greeting and user has not sent any message yet, rehydrate with active product
+      const history = window.__AISalesAssociateSessionMemory
+        ? window.__AISalesAssociateSessionMemory.getChatHistory()
+        : [];
+      const hasUserMessage = history.some(m => m.sender === 'user');
+      if (!hasUserMessage && product && product.isProductPage) {
+        if (window.__AISalesAssociateSessionMemory?.clearChatHistory) {
+          window.__AISalesAssociateSessionMemory.clearChatHistory();
+        }
+        const thread = this.shadow.getElementById('messageThread');
+        if (thread) {
+          thread.innerHTML = '';
+          this.renderInitialGreeting();
+        }
+      }
     }
 
     handleHesitationTrigger(trigger) {
@@ -820,17 +860,15 @@
         window.__AISalesAssociateSessionMemory.recordHesitationSignal(trigger);
       }
 
-      // If drawer is already open, add a proactive message into the thread
+      // If drawer is already open, NEVER interrupt the ongoing conversation!
       if (this.isOpen) {
-        this.addStylistMessage(trigger.suggestedNudge, [
-          "Check my size",
-          "What should I pair with this?",
-          "Are there any discounts?"
-        ]);
-      } else {
-        // Show proactive speech bubble
-        const bubble = this.shadow.getElementById('speechBubble');
-        const bubbleMsg = this.shadow.getElementById('bubbleMessage');
+        return;
+      }
+
+      // Show proactive speech bubble when drawer is closed
+      const bubble = this.shadow.getElementById('speechBubble');
+      const bubbleMsg = this.shadow.getElementById('bubbleMessage');
+      if (bubble && bubbleMsg) {
         bubbleMsg.textContent = trigger.suggestedNudge;
         bubble.classList.add('visible');
       }
@@ -846,6 +884,7 @@
 
     openDrawer() {
       this.isOpen = true;
+      this.pauseHesitation();
       const drawer = this.shadow.getElementById('chatDrawer');
       const bubble = this.shadow.getElementById('speechBubble');
       drawer.classList.add('open');
@@ -870,6 +909,7 @@
 
     closeDrawer() {
       this.isOpen = false;
+      this.resumeHesitation();
       const drawer = this.shadow.getElementById('chatDrawer');
       drawer.classList.remove('open');
       if (window.__AISalesAssociateSessionMemory) {
@@ -915,11 +955,12 @@
       let quickReplies = ["Shopping for an occasion", "Just browsing fresh styles", "Check size & fit"];
 
       if (this.currentProduct && this.currentProduct.isProductPage) {
-        welcomeText = `Welcome! I see you're eyeing our **${this.currentProduct.title}**. It's one of our most praised pieces. Can I help you check fit or suggest a pairing?`;
-        quickReplies = ["Does this fit true to size?", "What pants pair best?", "Apply available discount"];
+        const title = this.currentProduct.title || this.currentProduct.name || "this piece";
+        welcomeText = `Welcome! I'm Julian, your stylist here. Eyeing **${title}**? It's one of our most praised pieces. Can I help you check fit or suggest a pairing?`;
+        quickReplies = ["Check my size", "Will this suit an evening event?", "Are there any discounts today?"];
       }
 
-      this.addStylistMessage(welcomeText, quickReplies);
+      this.addStylistMessage(welcomeText, quickReplies, this.currentProduct && this.currentProduct.isProductPage ? this.currentProduct : null);
     }
 
     handleUserSend(text) {
@@ -955,9 +996,9 @@
       threadEl.appendChild(typingEl);
       this._scrollToBottom();
 
-      const threadId = window.__AISalesAssociateSessionMemory
-        ? window.__AISalesAssociateSessionMemory.getThreadId()
-        : 'fallback-thread';
+      const sessionId = window.__AISalesAssociateSessionMemory
+        ? (window.__AISalesAssociateSessionMemory.getSessionId?.() || window.__AISalesAssociateSessionMemory.getThreadId?.())
+        : 'fallback-session';
 
       const viewedProducts = window.__AISalesAssociateSessionMemory
         ? window.__AISalesAssociateSessionMemory.getViewedProducts()
@@ -965,7 +1006,9 @@
 
       const payload = {
         message: userText,
-        thread_id: threadId,
+        session_id: sessionId,
+        thread_id: sessionId,
+        product: this.currentProduct || {},
         product_context: this.currentProduct || {},
         viewed_products: viewedProducts,
         hesitation_trigger: this.hesitationTrigger ? this.hesitationTrigger.type : null
@@ -1025,19 +1068,29 @@
                 const parsed = JSON.parse(dataStr);
                 if (parsed.type === 'token' && parsed.content) {
                   fullText += parsed.content;
-                  bubbleEl.innerHTML = this._formatMarkdown(fullText);
+                  const cleanStream = this._cleanMessageText(fullText);
+                  if (cleanStream) {
+                    bubbleEl.innerHTML = this._formatMarkdown(cleanStream);
+                  }
                   this._scrollToBottom();
                 } else if (parsed.content || parsed.token || parsed.delta || parsed.text) {
                   const token = parsed.content || parsed.token || parsed.delta || parsed.text;
                   fullText += token;
-                  bubbleEl.innerHTML = this._formatMarkdown(fullText);
+                  const cleanStream = this._cleanMessageText(fullText);
+                  if (cleanStream) {
+                    bubbleEl.innerHTML = this._formatMarkdown(cleanStream);
+                  }
                   this._scrollToBottom();
                 }
                 if (parsed.type === 'done') {
-                  if (!fullText && parsed.message) {
+                  if (parsed.session_id && window.__AISalesAssociateSessionMemory?.setSessionId) {
+                    window.__AISalesAssociateSessionMemory.setSessionId(parsed.session_id);
+                  }
+                  if (parsed.message) {
                     fullText = parsed.message;
-                    bubbleEl.innerHTML = this._formatMarkdown(fullText);
-                    this._scrollToBottom();
+                  }
+                  if (parsed.quick_replies && Array.isArray(parsed.quick_replies) && parsed.quick_replies.length > 0) {
+                    quickReplies = parsed.quick_replies;
                   }
                   if (parsed.show_card && Array.isArray(parsed.recommended_products) && parsed.recommended_products.length > 0) {
                     productRec = parsed.recommended_products[0];
@@ -1046,7 +1099,7 @@
                     this.activeActionPayload = parsed.action_payload;
                   }
                 }
-                if (parsed.quick_replies && Array.isArray(parsed.quick_replies)) {
+                if (parsed.quick_replies && Array.isArray(parsed.quick_replies) && parsed.quick_replies.length > 0) {
                   quickReplies = parsed.quick_replies;
                 }
                 if (parsed.product) {
@@ -1055,35 +1108,55 @@
               } catch (e) {
                 // If chunk is raw text
                 fullText += dataStr;
-                bubbleEl.innerHTML = this._formatMarkdown(fullText);
+                const cleanStream = this._cleanMessageText(fullText);
+                if (cleanStream) {
+                  bubbleEl.innerHTML = this._formatMarkdown(cleanStream);
+                }
                 this._scrollToBottom();
               }
             }
           }
         }
 
-        // Ensure bubble is never blank
-        if (!fullText || fullText.trim() === '') {
-          fullText = "I'm right here with you! Tell me about the occasion or vibe you're aiming for.";
-          bubbleEl.innerHTML = this._formatMarkdown(fullText);
+        // Clean final message and extract pills if present in fullText
+        const pillsMatch = fullText.match(/<pills>\s*(\[.*?\])\s*<\/pills>/i);
+        if (pillsMatch && (!quickReplies || quickReplies.length === 0)) {
+          try {
+            const parsedPills = JSON.parse(pillsMatch[1]);
+            if (Array.isArray(parsedPills) && parsedPills.length > 0) {
+              quickReplies = parsedPills;
+            }
+          } catch (e) {}
         }
+        if (!quickReplies || quickReplies.length === 0) {
+          const pillsSection = fullText.match(/<pills>[\s\S]*/i);
+          if (pillsSection) {
+            const matches = pillsSection[0].match(/"([^"]+)"/g);
+            if (matches && matches.length > 0) {
+              quickReplies = matches.map(m => m.replace(/^"|"$/g, ''));
+            }
+          }
+        }
+
+        const finalCleanText = this._cleanMessageText(fullText) || "I'm right here with you! Tell me about the occasion or vibe you're aiming for.";
+        bubbleEl.innerHTML = this._formatMarkdown(finalCleanText);
 
         // Render Product Recommendation Card only when a specific item is curated/recommended
         if (productRec) {
           this._renderProductCard(cardTarget, productRec);
         }
 
-        // Render Quick Reply Pills
-        const defaultPills = ["How does sizing run?", "Pair this with an outfit", "Apply the 10% discount"];
-        const pillsToRender = quickReplies.length > 0 ? quickReplies : defaultPills;
-        this._renderPills(pillsTarget, pillsToRender);
+        // Render Quick Reply Pills dynamically
+        if (quickReplies && quickReplies.length > 0) {
+          this._renderPills(pillsTarget, quickReplies);
+        }
 
         // Save to Session Memory
         if (window.__AISalesAssociateSessionMemory) {
           window.__AISalesAssociateSessionMemory.saveChatMessage({
             sender: 'stylist',
-            text: fullText,
-            quickReplies: pillsToRender,
+            text: finalCleanText,
+            quickReplies: quickReplies,
             productRecommendation: productRec || this.currentProduct
           });
         }
@@ -1098,14 +1171,14 @@
     }
 
     handleFallbackResponse(userText) {
-      let reply = "I'm right here with you! You're going to look like an absolute hero in this cut. The silhouette is impeccably tailored to give you broad shoulders and a crisp, modern presence.";
+      let reply = "I'm right here with you! You're going to look like an absolute hero in this cut.";
       let product = this.currentProduct;
-      let pills = ["Confirm my size", "Check fabric care", "View & Buy"];
+      let pills = ["Confirm my size", "What shoes pair best?", "Apply 10% discount and let's buy"];
 
       if (userText.toLowerCase().includes('size') || userText.toLowerCase().includes('fit')) {
         reply = "For our garments, if you prefer a sharp, bespoke Italian fit, go true to size. If you enjoy a comfortable, relaxed drape, sizing up one step works beautifully!";
       } else if (userText.toLowerCase().includes('checkout') || userText.toLowerCase().includes('buy')) {
-        reply = "Let's walk you straight to the checkout counter! Use VIP code **HERO15** at checkout for 15% off your first order.";
+        reply = "Let's walk you straight to the checkout counter! Use VIP code **STYLIST10** at checkout for 10% off your order.";
       }
 
       this._appendStylistBubble(reply, pills, product);
@@ -1214,6 +1287,10 @@
         pillBtn.textContent = pillText;
         pillBtn.addEventListener('click', () => {
           if (!this.isStreaming) {
+            const lower = pillText.toLowerCase();
+            if (lower.includes('buy') || lower.includes('checkout') || (lower.includes('discount') && lower.includes('apply'))) {
+              this.triggerViewAndBuy(this.currentProduct, { silent: true });
+            }
             this.handleUserSend(pillText);
           }
         });
@@ -1222,40 +1299,188 @@
     }
 
     /**
-     * 'View & Buy' Button Action:
-     * Native smooth scroll to host store CTA (#add-to-cart, #buy-now)
-     * and adds a temporary spotlight pulse glow effect.
+     * Universal DOM Swatch & Cart Actuator:
+     * Platform-agnostic (Shopify, WooCommerce, Magento, BigCommerce, Custom).
+     * 1. Programmatically selects matching size/color in buttons, swatches, radio inputs, or <select> dropdowns.
+     * 2. Populates visible promo inputs with 'STYLIST10'.
+     * 3. Programmatically clicks native checkout / cart buttons.
+     * 4. Smooth-scrolls to the checkout/cart CTA with spotlight pulse effect.
      */
-    triggerViewAndBuy(product) {
+    triggerViewAndBuy(product, options = {}) {
       shield.executeSafe(() => {
-        // Look for host CTA buttons
-        const selectors = [
-          '#buy-now',
-          '#buy-now-btn',
-          '#add-to-cart',
+        const prod = product || this.currentProduct || {};
+
+        // 1. Resolve Target Size & Color
+        const targetSize = options.size || prod.selectedVariant?.size || 'M';
+        const targetColor = options.color || prod.selectedVariant?.color || '';
+
+        // 2. Programmatically Select Matching Size in DOM across buttons, swatches, and <select>
+        if (targetSize) {
+          const targetUpper = targetSize.trim().toUpperCase();
+
+          // Check <select> dropdowns first (Shopify/WooCommerce standard)
+          const sizeSelects = document.querySelectorAll('select[name*="size" i], select#size, select[id*="size" i], select[name="id"], select.size-select, select');
+          let selectMatched = false;
+          for (const sel of sizeSelects) {
+            const opts = Array.from(sel.options || []);
+            const matchOpt = opts.find(opt => {
+              const optText = (opt.text || opt.value || '').trim().toUpperCase();
+              return optText === targetUpper || optText.includes(targetUpper) || (targetUpper.length === 1 && optText.startsWith(targetUpper));
+            });
+            if (matchOpt) {
+              sel.value = matchOpt.value;
+              sel.dispatchEvent(new Event('input', { bubbles: true }));
+              sel.dispatchEvent(new Event('change', { bubbles: true }));
+              selectMatched = true;
+              break;
+            }
+          }
+
+          // Check size buttons & swatches
+          if (!selectMatched) {
+            const sizeSelectors = [
+              `.size-btn[data-size="${targetSize}"]`,
+              `button[data-size="${targetSize}"]`,
+              `.size-option[data-size="${targetSize}"]`,
+              `[data-value="${targetSize}"]`,
+              `[data-option-value="${targetSize}"]`,
+              `button.size-btn`,
+              `.size-btn`,
+              `.size-option`,
+              `button[data-size]`,
+              `input[name*="size" i]`
+            ];
+            for (const sel of sizeSelectors) {
+              const elements = document.querySelectorAll(sel);
+              let matched = false;
+              elements.forEach(el => {
+                const val = (el.getAttribute('data-size') || el.getAttribute('data-value') || el.value || el.textContent || '').trim().toUpperCase();
+                if (val === targetUpper || (val.length === 1 && targetUpper.startsWith(val)) || (targetUpper.length === 1 && val.startsWith(targetUpper))) {
+                  el.click();
+                  if (el.tagName === 'INPUT' && el.type === 'radio') {
+                    el.checked = true;
+                  }
+                  if (typeof el.dispatchEvent === 'function') {
+                    el.dispatchEvent(new Event('change', { bubbles: true }));
+                  }
+                  el.classList.add('active');
+                  matched = true;
+                }
+              });
+              if (matched) break;
+            }
+          }
+        }
+
+        // 3. Programmatically Select Matching Color in DOM
+        if (targetColor) {
+          const targetColorLower = targetColor.trim().toLowerCase();
+
+          // Check <select> color dropdowns
+          const colorSelects = document.querySelectorAll('select[name*="color" i], select#color, select[id*="color" i]');
+          let colorSelectMatched = false;
+          for (const sel of colorSelects) {
+            const opts = Array.from(sel.options || []);
+            const matchOpt = opts.find(opt => {
+              const optText = (opt.text || opt.value || '').trim().toLowerCase();
+              return optText.includes(targetColorLower) || targetColorLower.includes(optText);
+            });
+            if (matchOpt) {
+              sel.value = matchOpt.value;
+              sel.dispatchEvent(new Event('input', { bubbles: true }));
+              sel.dispatchEvent(new Event('change', { bubbles: true }));
+              colorSelectMatched = true;
+              break;
+            }
+          }
+
+          if (!colorSelectMatched) {
+            const colorSelectors = [
+              `.color-swatch-btn[data-color*="${targetColor}" i]`,
+              `.color-swatch-btn[title*="${targetColor}" i]`,
+              `.color-swatch-btn`,
+              `.color-swatch`,
+              `.color-btn`,
+              `input[name*="color" i]`
+            ];
+            for (const sel of colorSelectors) {
+              const elements = document.querySelectorAll(sel);
+              let matched = false;
+              elements.forEach(el => {
+                const val = (el.getAttribute('data-color') || el.getAttribute('title') || el.value || el.textContent || '').trim().toLowerCase();
+                if (val.includes(targetColorLower) || targetColorLower.includes(val)) {
+                  el.click();
+                  if (el.tagName === 'INPUT' && el.type === 'radio') {
+                    el.checked = true;
+                  }
+                  if (typeof el.dispatchEvent === 'function') {
+                    el.dispatchEvent(new Event('change', { bubbles: true }));
+                  }
+                  el.classList.add('active');
+                  matched = true;
+                }
+              });
+              if (matched) break;
+            }
+          }
+        }
+
+        // 4. Populate Promo / Discount Input with STYLIST10
+        const promoSelectors = [
+          'input#promo-code',
+          'input#discount-code',
+          'input#coupon-code',
+          'input[name*="discount" i]',
+          'input[name*="promo" i]',
+          'input[name*="coupon" i]',
+          'input[id*="discount" i]',
+          'input[id*="promo" i]',
+          'input[placeholder*="discount" i]',
+          'input[placeholder*="promo" i]',
+          'input[placeholder*="coupon" i]'
+        ];
+        for (const sel of promoSelectors) {
+          const promoInputs = document.querySelectorAll(sel);
+          promoInputs.forEach(input => {
+            input.value = 'STYLIST10';
+            input.dispatchEvent(new Event('input', { bubbles: true }));
+            input.dispatchEvent(new Event('change', { bubbles: true }));
+          });
+        }
+
+        // 5. Click the native CTA Button
+        const ctaSelectors = [
           '#add-to-cart-btn',
-          '#purchase-section',
-          '.btn-buy-now',
-          '.add-to-cart',
+          '#buy-now-btn',
+          '#addToCart',
+          '#add-to-cart',
+          '#buy-now',
           'button[name="add"]',
-          '.btn-add-to-cart',
-          'button[data-action="buy"]'
+          '.single_add_to_cart_button',
+          '.add-to-cart',
+          '.add_to_cart',
+          '.btn-add-cart',
+          '.btn-buy-now',
+          'button[data-action="add-to-cart"]',
+          'button[data-action="buy"]',
+          '[data-testid="add-to-cart"]',
+          '.shopify-payment-button__button'
         ];
 
         let targetEl = null;
-        for (const sel of selectors) {
+        for (const sel of ctaSelectors) {
           const el = document.querySelector(sel);
           if (el) {
             targetEl = el;
+            el.click();
             break;
           }
         }
 
+        // 6. Smooth Scroll to CTA / Checkout and Add Spotlight Glow
         if (targetEl) {
-          // Native smooth scroll into view
           targetEl.scrollIntoView({ behavior: 'smooth', block: 'center' });
 
-          // Apply spotlight pulse effect on host element
           const originalTransition = targetEl.style.transition;
           const originalBoxShadow = targetEl.style.boxShadow;
           const originalTransform = targetEl.style.transform;
@@ -1272,18 +1497,26 @@
             }, 1800);
           }, 400);
 
-          // Give a confirming feedback in the drawer
-          this.addStylistMessage("I've guided you straight to the buy button! Click it to claim your item, or let me know if you want to verify your size first.", [
-            "What if it doesn't fit?",
-            "Any discount code?",
-            "Looks great, thank you!"
-          ]);
-        } else if (product.url && typeof window !== 'undefined' && window.location && product.url !== window.location.href) {
-          window.location.href = product.url;
-        } else {
+          // Only inject confirmation message if triggered directly by user click on card CTA
+          // (When triggered by a quick-reply pill, handleUserSend streams Julian's real response)
+          if (!options.silent) {
+            this.addStylistMessage("I've selected your size and added this piece directly to your bag with 10% discount code **STYLIST10** applied!", [
+              "Complete checkout with 10% off",
+              "What shoes pair with this?",
+              "What is your return policy?"
+            ]);
+          }
+        } else if (prod.url && typeof window !== 'undefined' && window.location && prod.url !== window.location.href) {
+          window.location.href = prod.url;
+        } else if (!options.silent) {
           this.addStylistMessage("You're ready to purchase! Scroll up to select your size and tap 'Add to Cart'.");
         }
       });
+    }
+
+    _cleanMessageText(text) {
+      if (!text) return '';
+      return text.replace(/<pills>[\s\S]*?<\/pills>/gi, '').replace(/<pills>[\s\S]*/gi, '').trim();
     }
 
     _scrollToBottom() {
@@ -1304,7 +1537,8 @@
 
     _formatMarkdown(text) {
       if (!text) return '';
-      let escaped = this._escapeHTML(text);
+      let cleaned = this._cleanMessageText(text);
+      let escaped = this._escapeHTML(cleaned);
       // Bold
       escaped = escaped.replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>');
       // Italics
