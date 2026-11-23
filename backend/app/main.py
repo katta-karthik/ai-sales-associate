@@ -268,11 +268,17 @@ def get_or_create_session(
 
         SESSIONS[sid]["viewed_products"] = existing[:10]
 
+    if valid_prod:
+        product_key = valid_prod.get("url") or valid_prod.get("id") or valid_prod.get("title") or valid_prod.get("name")
+        previous_key = SESSIONS[sid].get("active_page_product")
+        if previous_key != product_key:
+            SESSIONS[sid].pop("shortlist", None)
+            SESSIONS[sid].pop("selected_product", None)
+            SESSIONS[sid]["recommended_products"] = []
+        SESSIONS[sid]["active_page_product"] = product_key
     if catalog is not None:
         SESSIONS[sid]["merchant_catalog"] = True
         SESSIONS[sid]["catalog_items"] = [p for p in catalog if isinstance(p.get("title") or p.get("name"), str) and p.get("in_stock") is not False]
-        if valid_prod:
-            SESSIONS[sid]["recommended_products"] = []
     return sid, SESSIONS[sid]
 
 
@@ -312,10 +318,61 @@ def discover_products(req: ChatRequest, sid: str, state: SalesState) -> Optional
     state["intent_stage"] = "EVALUATOR"
     state["recommended_products"] = picks
     state["action_payload"] = None
-    state["quick_replies"] = []
+    state["shortlist"] = picks
+    state.pop("selected_product", None)
+    replies = [f"Tell me about {product_label(item)}" for item in picks]
+    state["quick_replies"] = replies
     state["messages"].append(AIMessage(content=message))
     return ChatResponse(session_id=sid, node="curation", intent_stage="EVALUATOR", message=message,
-                        quick_replies=[], recommended_products=picks, show_card=bool(picks))
+                        quick_replies=replies, recommended_products=picks, show_card=bool(picks))
+
+
+def product_label(product: Dict[str, Any]) -> str:
+    return product.get("title") or product["name"]
+
+
+def clarify_product_choice(text: str, sid: str, state: SalesState) -> Optional[ChatResponse]:
+    """Keep a shortlist distinct from the shopper's confirmed product choice."""
+    shortlist = state.get("shortlist", [])
+    if not shortlist:
+        return None
+    label = re.sub(r"^tell me about\s+", "", text.strip().casefold()).rstrip("?.!")
+    for item in shortlist:
+        if label == product_label(item).casefold().rstrip("?.!"):
+            state["selected_product"] = item
+            break
+    else:
+        if state.get("selected_product") or classify_intent(state) != "action":
+            return None
+        if len(shortlist) == 1:
+            state["selected_product"] = shortlist[0]
+            return None
+        replies = [f"Tell me about {product_label(item)}" for item in shortlist]
+        message = "Which of these would you like to review?"
+        state["current_node"] = "curation"
+        state["intent_stage"] = "EVALUATOR"
+        state["action_payload"] = None
+        state["quick_replies"] = replies
+        state["messages"].append(AIMessage(content=message))
+        return ChatResponse(session_id=sid, node="curation", intent_stage="EVALUATOR",
+                            message=message, quick_replies=replies, recommended_products=shortlist,
+                            show_card=True)
+
+    item = state["selected_product"]
+    name = product_label(item)
+    description = item.get("description")
+    message = f"Let’s look at {name}."
+    if isinstance(description, str) and description.strip():
+        message += f" {description.strip()}"
+    replies = ["Check sizing", "Review product options"]
+    state["current_node"] = "validation"
+    state["intent_stage"] = "EVALUATOR"
+    state["action_payload"] = None
+    state["quick_replies"] = replies
+    state["messages"].append(AIMessage(content=message))
+    return ChatResponse(session_id=sid, node="validation", intent_stage="EVALUATOR",
+                        message=message, quick_replies=replies, recommended_products=[item],
+                        show_card=True)
 
 
 def resolve_node_metadata(node: str, state: SalesState, user_text: str = "") -> tuple[str, List[str], List[Dict[str, Any]], Optional[Dict[str, Any]], bool]:
@@ -329,7 +386,7 @@ def resolve_node_metadata(node: str, state: SalesState, user_text: str = "") -> 
     available = curated or viewed or (state.get("catalog_items") or [] if state.get("merchant_catalog") else state.get("catalog_items", CATALOG_ITEMS))
     if available is None:
         available = []
-    target = available[0] if available else {}
+    target = state.get("selected_product") or (available[0] if available else {})
     text_lower = user_text.lower().strip()
 
     show_card = False
@@ -339,7 +396,7 @@ def resolve_node_metadata(node: str, state: SalesState, user_text: str = "") -> 
     sizes_avail = product_sizes(target)
     curr = target.get("currency") or state.get("currency") or "$"
 
-    if node == "action" or any(w in text_lower for w in ["buy", "checkout", "grab it", "apply", "discount", "lock it in"]):
+    if node == "action":
         if not target:
             return "EXPLORER", ["Browse products"], [], None, False
         stage = "READY_TO_BUY"
@@ -521,7 +578,7 @@ def chat_sync(req: ChatRequest):
         # Proactive approach trigger from hesitation detector
         state["messages"].append(HumanMessage(content="Hello! Can you help me find something or tell me about this piece?"))
 
-    result = discover_products(req, sid, state)
+    result = clarify_product_choice(req.message or "", sid, state) or discover_products(req, sid, state)
     if result:
         return result
 
@@ -689,7 +746,9 @@ async def chat_stream(request: Request):
     elif event in ("approach", "open"):
         state["messages"].append(HumanMessage(content="Hey! What makes this piece special?"))
 
-    result = discover_products(req, sid, state) if request.method == "POST" else None
+    result = clarify_product_choice(message or "", sid, state)
+    if not result and req is not None:
+        result = discover_products(req, sid, state)
     if result:
         def discovery_events():
             for kind, data in (

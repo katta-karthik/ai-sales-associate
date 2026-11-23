@@ -443,7 +443,7 @@ def classify_intent(state: SalesState) -> str:
         "let's buy", "lets buy", "complete checkout", "i love it, let's grab it!",
         "i love it let's grab it", "let's grab it", "lets grab it"
     ]
-    if has_word(text, action_cues):
+    if text == "review product options" or has_word(text, action_cues):
         return "action"
 
     # 2. Chit-Chat / Playful / About Julian (never reset to greeting!)
@@ -600,7 +600,7 @@ def build_node_prompt(node: str, state: SalesState) -> List[BaseMessage]:
         viewed = inventory[:1]
 
     curated = state.get("recommended_products", [])
-    target = curated[0] if curated else (viewed[0] if viewed else {})
+    target = state.get("selected_product") or (curated[0] if curated else (viewed[0] if viewed else {}))
     profile = state.get("customer_profile", {})
 
     target_price = parse_price(target.get("price", 100.0))

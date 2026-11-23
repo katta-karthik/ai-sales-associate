@@ -898,3 +898,35 @@ def test_cross_session_customer_profile_memory():
     assert prof2.get("size") == "42"
 
 
+
+
+@pytest.mark.parametrize("route", ["/api/chat", "/api/chat/stream"])
+def test_purchase_handoff_follows_explicit_shopper_choice(route):
+    catalog = [
+        {"title": "Linen Shirt", "url": "/shirt", "price": 100, "sizes": ["S", "M"]},
+        {"title": "Linen Jacket", "url": "/jacket", "price": 120, "sizes": ["L", "XL"]},
+    ]
+    session_id = None
+
+    def turn(message):
+        nonlocal session_id
+        response = client.post(route, json={"message": message, "catalog": catalog, "session_id": session_id})
+        assert response.status_code == 200
+        if route.endswith("/stream"):
+            events = [json.loads(line[6:]) for line in response.text.splitlines() if line.startswith("data: ")]
+            result = events[-1]
+            assert result["type"] == "done"
+        else:
+            result = response.json()
+        session_id = result["session_id"]
+        return result
+
+    assert turn("Show me linen")["quick_replies"] == ["Tell me about Linen Shirt", "Tell me about Linen Jacket"]
+    ambiguous = turn("I want to buy it")
+    assert "Which" in ambiguous["message"]
+    assert ambiguous["action_payload"] is None
+    assert turn("Tell me about Linen Jacket")["recommended_products"] == [catalog[1]]
+    assert "I wear XL" in turn("Check sizing")["quick_replies"]
+    purchase = turn("Review product options")
+    assert purchase["action_payload"]["url"] == "/jacket"
+    assert purchase["recommended_products"] == [catalog[1]]

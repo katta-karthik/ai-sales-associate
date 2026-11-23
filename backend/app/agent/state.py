@@ -31,6 +31,9 @@ class SalesState(TypedDict, total=False):
     intent_stage: IntentStage
     cart_intent: Dict[str, Any]
     recommended_products: List[Dict[str, Any]]
+    shortlist: List[Dict[str, Any]]
+    selected_product: Dict[str, Any]
+    active_page_product: str
     current_node: str
     quick_replies: List[str]
     action_payload: Optional[Dict[str, Any]]
