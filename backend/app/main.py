@@ -51,6 +51,20 @@ from backend.app.catalog.catalog import CATALOG_ITEMS, get_product, list_catalog
 # In-memory session store: session_id -> SalesState
 SESSIONS: Dict[str, SalesState] = {}
 
+# Cross-session customer profile store: customer_id / shopper_uuid -> persistent customer profile
+CUSTOMER_PROFILES: Dict[str, Dict[str, Any]] = {}
+
+
+def save_customer_profile(state: SalesState, customer_id: Optional[str] = None, shopper_uuid: Optional[str] = None) -> None:
+    """Save customer profile updates into cross-session store keyed by customer_id and shopper_uuid."""
+    profile = state.get("customer_profile", {})
+    cid = customer_id or state.get("customer_id") or profile.get("customer_id")
+    suid = shopper_uuid or state.get("shopper_uuid") or profile.get("shopper_uuid")
+    if cid:
+        CUSTOMER_PROFILES.setdefault(str(cid), {}).update(profile)
+    if suid:
+        CUSTOMER_PROFILES.setdefault(str(suid), {}).update(profile)
+
 app = FastAPI(
     title="AI Sales Associate Cloud Engine",
     description="Groq LPU-powered LangGraph autonomous retail stylist with sub-second streaming inference.",
@@ -173,8 +187,17 @@ def get_or_create_session(
 
         clean_catalog = [p for p in catalog if isinstance(p.get("title") or p.get("name"), str) and p.get("in_stock") is not False] if catalog is not None else ([] if is_merchant else None)
 
+        # Merge cross-session customer profile if returning customer
+        lookup_id = customer_id or shopper_uuid
+        persistent_profile = None
+        if lookup_id:
+            saved = CUSTOMER_PROFILES.get(str(lookup_id))
+            if saved:
+                persistent_profile = dict(saved)
+
         SESSIONS[sid] = init_sales_state(
             viewed_products=viewed_list,
+            customer_profile=persistent_profile,
             store_name=store_name or "Our Store",
             store_domain=store_domain,
             currency=currency or "$",
@@ -521,6 +544,7 @@ def chat_sync(req: ChatRequest):
     state["messages"].append(clean_ai_message)
     state["quick_replies"] = dynamic_replies
     SESSIONS[sid] = state
+    save_customer_profile(state, req.customer_id, req.shopper_uuid)
 
     try:
         sales_graph.update_state({"configurable": {"thread_id": sid}}, dict(state))
@@ -570,6 +594,7 @@ def record_conversion_telemetry(req: ConversionTelemetryRequest):
     state["cart_intent"] = cart_intent
     state["intent_stage"] = "READY_TO_BUY"
     SESSIONS[sid] = state
+    save_customer_profile(state, req.customer_id, req.shopper_uuid)
 
     try:
         sales_graph.update_state({"configurable": {"thread_id": sid}}, dict(state))
@@ -755,6 +780,7 @@ async def chat_stream(request: Request):
         state["messages"].append(clean_ai_msg)
         state["quick_replies"] = dynamic_replies
         SESSIONS[sid] = state
+        save_customer_profile(state, customer_id, shopper_uuid)
 
         try:
             sales_graph.update_state({"configurable": {"thread_id": sid}}, dict(state))

@@ -852,3 +852,49 @@ def test_widget_configuration_and_dom_extractor_identity():
     assert res.returncode == 0, f"Widget Node check failed: {res.stderr}"
 
 
+def test_cross_session_customer_profile_memory():
+    """Verify customer profile facts persist across separate sessions when customer_id is provided."""
+    from backend.app.main import SESSIONS, CUSTOMER_PROFILES
+    customer_id = "vip_customer_7788"
+
+    # Session 1: customer establishes size and converts
+    sid1 = "session-visit-1"
+    res1 = client.post("/api/chat", json={
+        "message": "I wear size 42 and prefer slim cut",
+        "session_id": sid1,
+        "customer_id": customer_id,
+        "store_name": "Sartoria Milano",
+    })
+    assert res1.status_code == 200
+
+    # Log conversion
+    conv_res = client.post("/api/telemetry/conversion", json={
+        "session_id": sid1,
+        "customer_id": customer_id,
+        "order_id": "ORD-99001",
+        "order_total": 520.0,
+        "purchased_items": [{"title": "Wool Suit", "size": "42"}],
+    })
+    assert conv_res.status_code == 200
+    assert customer_id in CUSTOMER_PROFILES
+    assert CUSTOMER_PROFILES[customer_id].get("has_converted") is True
+
+    # Session 2: days later, customer returns with a brand new session_id
+    sid2 = "session-visit-2-different-day"
+    res2 = client.post("/api/chat", json={
+        "message": "Hello, show me new arrivals",
+        "session_id": sid2,
+        "customer_id": customer_id,
+        "store_name": "Sartoria Milano",
+    })
+    assert res2.status_code == 200
+
+    # Verify session 2 automatically inherited customer facts from session 1
+    state2 = SESSIONS[sid2]
+    prof2 = state2["customer_profile"]
+    assert prof2.get("customer_id") == customer_id
+    assert prof2.get("has_converted") is True
+    assert prof2.get("last_order_total") == 520.0
+    assert prof2.get("size") == "42"
+
+
