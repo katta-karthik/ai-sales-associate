@@ -83,6 +83,16 @@ class ChatRequest(BaseModel):
     event: Optional[str] = Field(default="chat", description="Event trigger (chat, hesitation, approach)")
     catalog: Optional[List[Dict[str, Any]]] = Field(default=None, max_length=200)
     occasion: Optional[str] = Field(default=None, description="Optional occasion filter")
+    customer_id: Optional[str] = Field(default=None, description="Merchant customer ID")
+    shopper_uuid: Optional[str] = Field(default=None, description="Persistent cross-session shopper UUID")
+    store_name: Optional[str] = Field(default=None, description="Host store name / dynamic brand")
+    store_domain: Optional[str] = Field(default=None, description="Store website domain")
+    currency: Optional[str] = Field(default=None, description="Store currency symbol or code")
+    brand_tone: Optional[str] = Field(default=None, description="Brand tone / persona style")
+    viewed_products: Optional[List[Dict[str, Any]]] = Field(default=None, description="Client multi-page browsing history")
+    hesitation_trigger: Optional[Dict[str, Any]] = Field(default=None, description="Hesitation trigger payload")
+    promo_code: Optional[str] = Field(default=None, description="Merchant-authorized promotional code")
+    allow_discounts: Optional[bool] = Field(default=None, description="Whether merchant permits promotional discounts")
 
 
 class ChatResponse(BaseModel):
@@ -96,6 +106,17 @@ class ChatResponse(BaseModel):
     show_card: bool = False
 
 
+class ConversionTelemetryRequest(BaseModel):
+    session_id: Optional[str] = Field(default=None, description="Session ID for the converted journey")
+    thread_id: Optional[str] = Field(default=None, description="Alias for session_id")
+    customer_id: Optional[str] = Field(default=None, description="Merchant customer ID")
+    shopper_uuid: Optional[str] = Field(default=None, description="Persistent cross-session shopper UUID")
+    purchased_items: List[Dict[str, Any]] = Field(default_factory=list, description="List of purchased items")
+    order_total: Optional[float] = Field(default=0.0, description="Order total monetary value")
+    currency: Optional[str] = Field(default="$", description="Currency symbol or ISO code")
+    order_id: Optional[str] = Field(default=None, description="Host store order or transaction ID")
+
+
 # ==================== HELPERS ====================
 
 def is_valid_product(prod: Optional[Dict[str, Any]]) -> bool:
@@ -105,10 +126,31 @@ def is_valid_product(prod: Optional[Dict[str, Any]]) -> bool:
     return bool(prod.get("id") or prod.get("name") or prod.get("title"))
 
 
-def get_or_create_session(session_id: Optional[str], viewed_product: Optional[Dict[str, Any]] = None, catalog: Optional[List[Dict[str, Any]]] = None) -> tuple[str, SalesState]:
+def get_or_create_session(
+    session_id: Optional[str],
+    viewed_product: Optional[Dict[str, Any]] = None,
+    catalog: Optional[List[Dict[str, Any]]] = None,
+    store_name: Optional[str] = None,
+    store_domain: Optional[str] = None,
+    currency: Optional[str] = None,
+    brand_tone: Optional[str] = None,
+    shopper_uuid: Optional[str] = None,
+    customer_id: Optional[str] = None,
+    client_viewed_products: Optional[List[Dict[str, Any]]] = None,
+    hesitation_trigger: Optional[Dict[str, Any]] = None,
+    promo_code: Optional[str] = None,
+    allow_discounts: Optional[bool] = None,
+) -> tuple[str, SalesState]:
     """Retrieve existing session or instantiate a fresh SalesState with MemorySaver checkpointer sync."""
     sid = session_id or str(uuid.uuid4())
     valid_prod = viewed_product if is_valid_product(viewed_product) else None
+
+    # Identify if host environment is merchant store vs internal seed demo store
+    is_merchant = (
+        catalog is not None or
+        (store_name and store_name.strip().lower() not in ("karthik & co.", "karthik & co", "karthik & co. modern apparel", "demo store", "our store")) or
+        (store_domain and "localhost" not in store_domain and "127.0.0.1" not in store_domain)
+    )
 
     if sid not in SESSIONS:
         # Check if checkpointer already has checkpoint for this thread_id
@@ -120,24 +162,88 @@ def get_or_create_session(session_id: Optional[str], viewed_product: Optional[Di
             pass
 
     if sid not in SESSIONS:
-        viewed_list = [valid_prod] if valid_prod else ([] if catalog is not None else [CATALOG_ITEMS[0]])
-        SESSIONS[sid] = init_sales_state(viewed_products=viewed_list)
-    elif valid_prod:
-        # Update currently viewed product if provided, keeping multi-turn history intact
-        existing = SESSIONS[sid].get("viewed_products", [])
-        prod_id = valid_prod.get("id") or valid_prod.get("title") or valid_prod.get("name")
-        match_idx = -1
-        for idx, p in enumerate(existing):
-            p_id = p.get("id") or p.get("title") or p.get("name")
-            if p_id and p_id == prod_id:
-                match_idx = idx
-                break
-        if match_idx >= 0:
-            existing[match_idx] = valid_prod
-            if match_idx > 0:
-                existing.insert(0, existing.pop(match_idx))
+        if valid_prod:
+            viewed_list = [valid_prod]
+        elif client_viewed_products:
+            viewed_list = [p for p in client_viewed_products if is_valid_product(p)]
+        elif is_merchant:
+            viewed_list = []
         else:
-            SESSIONS[sid]["viewed_products"] = [valid_prod] + existing
+            viewed_list = [CATALOG_ITEMS[0]]
+
+        clean_catalog = [p for p in catalog if isinstance(p.get("title") or p.get("name"), str) and p.get("in_stock") is not False] if catalog is not None else ([] if is_merchant else None)
+
+        SESSIONS[sid] = init_sales_state(
+            viewed_products=viewed_list,
+            store_name=store_name or "Our Store",
+            store_domain=store_domain,
+            currency=currency or "$",
+            brand_tone=brand_tone,
+            shopper_uuid=shopper_uuid,
+            customer_id=customer_id,
+            hesitation_trigger=hesitation_trigger,
+            merchant_catalog=is_merchant,
+            catalog_items=clean_catalog,
+            promo_code=promo_code,
+            allow_discounts=allow_discounts,
+        )
+    else:
+        # Existing session: update store identity and shopper context if provided
+        if is_merchant:
+            SESSIONS[sid]["merchant_catalog"] = True
+            if "catalog_items" not in SESSIONS[sid]:
+                SESSIONS[sid]["catalog_items"] = []
+        if promo_code is not None:
+            SESSIONS[sid]["promo_code"] = promo_code
+        if allow_discounts is not None:
+            SESSIONS[sid]["allow_discounts"] = allow_discounts
+        if store_name:
+            SESSIONS[sid]["store_name"] = store_name
+        if store_domain:
+            SESSIONS[sid]["store_domain"] = store_domain
+        if currency:
+            SESSIONS[sid]["currency"] = currency
+        if brand_tone:
+            SESSIONS[sid]["brand_tone"] = brand_tone
+        if customer_id:
+            SESSIONS[sid]["customer_id"] = customer_id
+            SESSIONS[sid].setdefault("customer_profile", {})["customer_id"] = customer_id
+        if shopper_uuid:
+            SESSIONS[sid]["shopper_uuid"] = shopper_uuid
+            SESSIONS[sid].setdefault("customer_profile", {})["shopper_uuid"] = shopper_uuid
+        if hesitation_trigger:
+            SESSIONS[sid]["hesitation_trigger"] = hesitation_trigger
+            if isinstance(hesitation_trigger, dict):
+                reason = hesitation_trigger.get("type") or hesitation_trigger.get("reason") or hesitation_trigger.get("suggestedNudge")
+                if reason:
+                    SESSIONS[sid].setdefault("customer_profile", {})["hesitation_reason"] = reason
+
+        # Merge viewed products
+        existing = SESSIONS[sid].get("viewed_products", [])
+        if valid_prod:
+            prod_id = valid_prod.get("id") or valid_prod.get("title") or valid_prod.get("name")
+            match_idx = -1
+            for idx, p in enumerate(existing):
+                p_id = p.get("id") or p.get("title") or p.get("name")
+                if p_id and p_id == prod_id:
+                    match_idx = idx
+                    break
+            if match_idx >= 0:
+                existing[match_idx] = valid_prod
+                if match_idx > 0:
+                    existing.insert(0, existing.pop(match_idx))
+            else:
+                existing = [valid_prod] + existing
+
+        if client_viewed_products:
+            for cp in client_viewed_products:
+                if not is_valid_product(cp):
+                    continue
+                cp_id = cp.get("id") or cp.get("title") or cp.get("name")
+                if not any((p.get("id") or p.get("title") or p.get("name")) == cp_id for p in existing):
+                    existing.append(cp)
+
+        SESSIONS[sid]["viewed_products"] = existing[:10]
 
     if catalog is not None:
         SESSIONS[sid]["merchant_catalog"] = True
@@ -194,9 +300,12 @@ def resolve_node_metadata(node: str, state: SalesState, user_text: str = "") -> 
     Extract quick replies, recommendations, action payload, and show_card flag.
     Returns: (stage, replies, recs, action, show_card)
     """
+    is_merchant = state.get("merchant_catalog") or not state.get("allow_discounts", True)
     curated = state.get("recommended_products", [])
     viewed = state.get("viewed_products", [])
-    available = curated or viewed or state.get("catalog_items", CATALOG_ITEMS)
+    available = curated or viewed or (state.get("catalog_items") or [] if state.get("merchant_catalog") else state.get("catalog_items", CATALOG_ITEMS))
+    if available is None:
+        available = []
     target = available[0] if available else {}
     text_lower = user_text.lower().strip()
 
@@ -205,12 +314,17 @@ def resolve_node_metadata(node: str, state: SalesState, user_text: str = "") -> 
     discounted_price = round(target_price * 0.9, 2)
     target_name = target.get("title") or target.get("name") or "Featured Piece"
     sizes_avail = product_sizes(target)
+    curr = target.get("currency") or state.get("currency") or "$"
 
     if node == "action" or any(w in text_lower for w in ["buy", "checkout", "grab it", "apply", "discount", "lock it in"]):
         if not target:
             return "EXPLORER", ["Browse products"], [], None, False
         stage = "READY_TO_BUY"
         show_card = True
+        if is_merchant:
+            return stage, ["Review product options", "Check sizing"], [target], {
+                "type": "view_product", "product_name": target_name, "url": target.get("url"), "price": target_price, "currency": curr
+            }, True
         action = {
             "type": "checkout",
             "product_id": target.get("id"),
@@ -221,12 +335,8 @@ def resolve_node_metadata(node: str, state: SalesState, user_text: str = "") -> 
             "checkout_url": f"/checkout?item={target.get('id')}&discount=STYLIST10",
             "sizes_available": sizes_avail,
         }
-        if state.get("merchant_catalog"):
-            return stage, ["Review product options", "Check sizing"], [target], {
-                "type": "view_product", "product_name": target_name, "url": target.get("url")
-            }, True
         replies = [
-            f"Complete checkout (${discounted_price:.2f})",
+            f"Complete checkout ({curr}{discounted_price:.2f})",
             "What shoes pair with this?",
             "What is your return policy?"
         ]
@@ -243,7 +353,7 @@ def resolve_node_metadata(node: str, state: SalesState, user_text: str = "") -> 
             replies = [
                 "I'm between Medium and Large",
                 "Does this fabric have stretch?",
-                "Apply the 10% discount and let's buy"
+                "Review product options" if is_merchant else "Apply the 10% discount and let's buy"
             ]
 
     elif any(w in text_lower for w in ["pair", "match", "shoes", "pants", "look", "suit", "cocktail", "wedding", "marriage", "marraige", "ceremony", "reception", "dinner"]):
@@ -254,7 +364,7 @@ def resolve_node_metadata(node: str, state: SalesState, user_text: str = "") -> 
         if any(w in text_lower for w in ["wedding", "marriage", "marraige"]):
             replies = ["Ceremony", "Evening Reception", "Both events"]
         elif any(w in text_lower for w in ["reception", "ceremony"]):
-            replies = ["What shoes work best?", "Check my size", "Apply 10% discount and let's buy"]
+            replies = ["What shoes work best?", "Check my size", "Review product options" if is_merchant else "Apply 10% discount and let's buy"]
         else:
             replies = [
                 "What shoes work best?",
@@ -275,13 +385,13 @@ def resolve_node_metadata(node: str, state: SalesState, user_text: str = "") -> 
 
     elif node == "greeting":
         stage = "EXPLORER"
-        show_card = True
+        show_card = bool(viewed)
         action = None
-        recs = viewed[:1]
+        recs = viewed[:1] if viewed else []
         replies = [
             "Check my size",
-            "Will this suit an evening event?",
-            "Are there any discounts today?"
+            "Will this suit an evening event?" if viewed else "Shopping for an occasion",
+            "Review product options" if is_merchant else "Are there any discounts today?"
         ]
 
     elif node == "curation":
@@ -292,7 +402,7 @@ def resolve_node_metadata(node: str, state: SalesState, user_text: str = "") -> 
         replies = [
             "How does the sizing run?",
             "What fabric is this made of?",
-            "Apply the 10% discount"
+            "Check sizing guide" if is_merchant else "Apply the 10% discount"
         ]
 
     else:
@@ -303,12 +413,12 @@ def resolve_node_metadata(node: str, state: SalesState, user_text: str = "") -> 
         if any(w in text_lower for w in ["wedding", "marriage", "marraige"]):
             replies = ["Ceremony", "Evening Reception", "Both events"]
         elif any(w in text_lower for w in ["reception", "ceremony"]):
-            replies = ["What shoes work best?", "Check my size", "Apply 10% discount and let's buy"]
+            replies = ["What shoes work best?", "Check my size", "Review product options" if is_merchant else "Apply 10% discount and let's buy"]
         else:
             replies = [
                 "Check my size",
                 "How should I style this?",
-                "Apply the 10% discount"
+                "Review product options" if is_merchant else "Apply the 10% discount"
             ]
 
     return stage, replies, recs, action, show_card
@@ -365,7 +475,21 @@ def chat_sync(req: ChatRequest):
     """Non-streaming synchronous chat endpoint for full response roundtrip."""
     session_id_val = req.session_id or req.thread_id
     product_val = req.product or req.product_context
-    sid, state = get_or_create_session(session_id_val, product_val, req.catalog)
+    sid, state = get_or_create_session(
+        session_id=session_id_val,
+        viewed_product=product_val,
+        catalog=req.catalog,
+        store_name=req.store_name,
+        store_domain=req.store_domain,
+        currency=req.currency,
+        brand_tone=req.brand_tone,
+        shopper_uuid=req.shopper_uuid,
+        customer_id=req.customer_id,
+        client_viewed_products=req.viewed_products,
+        hesitation_trigger=req.hesitation_trigger,
+        promo_code=req.promo_code,
+        allow_discounts=req.allow_discounts,
+    )
 
     if req.message:
         update_customer_profile(state, req.message)
@@ -415,6 +539,58 @@ def chat_sync(req: ChatRequest):
     )
 
 
+@app.post("/api/telemetry/conversion")
+def record_conversion_telemetry(req: ConversionTelemetryRequest):
+    """
+    Log conversion telemetry and record customer conversion signals in customer_profile
+    and state graph checkpointer memory.
+    """
+    sid = req.session_id or req.thread_id or str(uuid.uuid4())
+    _, state = get_or_create_session(sid, customer_id=req.customer_id, shopper_uuid=req.shopper_uuid)
+
+    profile = state.get("customer_profile", {}).copy()
+    profile["has_converted"] = True
+    profile["conversion_count"] = profile.get("conversion_count", 0) + 1
+    profile["last_order_total"] = req.order_total
+    profile["last_order_id"] = req.order_id
+    profile["last_purchased_items"] = req.purchased_items
+    if req.customer_id:
+        profile["customer_id"] = req.customer_id
+        state["customer_id"] = req.customer_id
+    if req.shopper_uuid:
+        profile["shopper_uuid"] = req.shopper_uuid
+        state["shopper_uuid"] = req.shopper_uuid
+
+    cart_intent = state.get("cart_intent", {}).copy()
+    cart_intent["purchased"] = True
+    cart_intent["order_id"] = req.order_id
+    cart_intent["order_total"] = req.order_total
+
+    state["customer_profile"] = profile
+    state["cart_intent"] = cart_intent
+    state["intent_stage"] = "READY_TO_BUY"
+    SESSIONS[sid] = state
+
+    try:
+        sales_graph.update_state({"configurable": {"thread_id": sid}}, dict(state))
+    except Exception as e:
+        logger.debug("conversion telemetry checkpointer update: %s", e)
+
+    logger.info(
+        "Conversion telemetry logged: session=%s customer=%s total=%s items_count=%d",
+        sid, req.customer_id or req.shopper_uuid, req.order_total, len(req.purchased_items)
+    )
+
+    return {
+        "status": "recorded",
+        "session_id": sid,
+        "customer_id": req.customer_id,
+        "shopper_uuid": req.shopper_uuid,
+        "order_total": req.order_total,
+        "recorded_items_count": len(req.purchased_items),
+    }
+
+
 @app.post("/api/chat/stream")
 @app.get("/api/chat/stream")
 async def chat_stream(request: Request):
@@ -432,15 +608,53 @@ async def chat_stream(request: Request):
         session_id = req.session_id or req.thread_id
         product = req.product or req.product_context
         event = req.event
+        catalog = req.catalog
+        store_name = req.store_name
+        store_domain = req.store_domain
+        currency = req.currency
+        brand_tone = req.brand_tone
+        shopper_uuid = req.shopper_uuid
+        customer_id = req.customer_id
+        viewed_products = req.viewed_products
+        hesitation_trigger = req.hesitation_trigger
+        promo_code = req.promo_code
+        allow_discounts = req.allow_discounts
     else:
+        req = None
         params = request.query_params
         message = params.get("message")
         session_id = params.get("session_id") or params.get("thread_id")
         product_id = params.get("product_id")
         product = get_product(product_id) if product_id else None
         event = params.get("event", "chat")
+        catalog = None
+        store_name = params.get("store_name")
+        store_domain = params.get("store_domain")
+        currency = params.get("currency")
+        brand_tone = params.get("brand_tone")
+        shopper_uuid = params.get("shopper_uuid")
+        customer_id = params.get("customer_id")
+        viewed_products = None
+        hesitation_trigger = None
+        promo_code = params.get("promo_code")
+        raw_allow = params.get("allow_discounts")
+        allow_discounts = (raw_allow.lower() == "true") if raw_allow else None
 
-    sid, state = get_or_create_session(session_id, product, req.catalog if request.method == "POST" else None)
+    sid, state = get_or_create_session(
+        session_id=session_id,
+        viewed_product=product,
+        catalog=catalog,
+        store_name=store_name,
+        store_domain=store_domain,
+        currency=currency,
+        brand_tone=brand_tone,
+        shopper_uuid=shopper_uuid,
+        customer_id=customer_id,
+        client_viewed_products=viewed_products,
+        hesitation_trigger=hesitation_trigger,
+        promo_code=promo_code,
+        allow_discounts=allow_discounts,
+    )
 
     if message:
         update_customer_profile(state, message)

@@ -186,8 +186,50 @@
       return this._getItem('hesitation_signals', []);
     }
 
+    getCustomerIdentity() {
+      return this._getItem('customer_identity', null);
+    }
+
+    setCustomerIdentity(identity) {
+      this._setItem('customer_identity', identity);
+    }
+
+    recordConversion(conversionData = {}, backendUrl = '') {
+      const conversions = this._getItem('conversions', []);
+      const entry = {
+        sessionId: this.getSessionId(),
+        orderId: conversionData.orderId || conversionData.order_id || null,
+        orderTotal: conversionData.orderTotal || conversionData.order_total || 0,
+        currency: conversionData.currency || '$',
+        purchasedItems: conversionData.purchasedItems || conversionData.purchased_items || [],
+        timestamp: Date.now()
+      };
+      conversions.push(entry);
+      this._setItem('conversions', conversions);
+      this.setIntentStage('READY_TO_BUY');
+
+      if (backendUrl) {
+        try {
+          fetch(`${backendUrl.replace(/\/+$/, '')}/api/telemetry/conversion`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              session_id: this.getSessionId(),
+              customer_id: conversionData.customerId || conversionData.customer_id,
+              shopper_uuid: conversionData.shopperUuid || conversionData.shopper_uuid,
+              order_id: entry.orderId,
+              order_total: entry.orderTotal,
+              currency: entry.currency,
+              purchased_items: entry.purchasedItems
+            })
+          }).catch(() => {});
+        } catch (e) {}
+      }
+      return entry;
+    }
+
     clear() {
-      const keys = ['session_id', 'thread_id', 'viewed_products', 'chat_history', 'intent_stage', 'drawer_state', 'hesitation_signals'];
+      const keys = ['session_id', 'thread_id', 'viewed_products', 'chat_history', 'intent_stage', 'drawer_state', 'hesitation_signals', 'customer_identity', 'conversions'];
       for (const k of keys) {
         const fullKey = `${STORAGE_KEY_PREFIX}${k}`;
         if (this.isStorageAvailable) {
@@ -218,6 +260,9 @@
     setDrawerState: (s) => memoryInstance.setDrawerState(s),
     recordHesitationSignal: (s) => memoryInstance.recordHesitationSignal(s),
     getHesitationSignals: () => memoryInstance.getHesitationSignals(),
+    getCustomerIdentity: () => memoryInstance.getCustomerIdentity(),
+    setCustomerIdentity: (id) => memoryInstance.setCustomerIdentity(id),
+    recordConversion: (data, url) => memoryInstance.recordConversion(data, url),
     clear: () => memoryInstance.clear()
   };
 })(window);

@@ -201,37 +201,61 @@ def search_catalog(
     max_price: Optional[float] = None,
     occasion: Optional[str] = None,
     limit: int = 5,
+    catalog: Optional[List[Dict]] = None,
 ) -> List[Dict]:
     """
-    Search and filter products in the in-memory catalog.
+    Search and filter products in the catalog.
     Matches queries against name, description, material, hero_highlight, and occasion.
+    Accepts dynamic catalog or defaults to seed catalog.
+    Safe against missing keys in dynamic merchant catalogs.
     """
-    results = CATALOG_ITEMS
+    results = catalog if catalog is not None else CATALOG_ITEMS
 
     if category:
         cat_lower = category.lower().strip()
-        results = [p for p in results if cat_lower in p["category"].lower()]
+        results = [p for p in results if cat_lower in str(p.get("category", "")).lower()]
 
     if max_price is not None:
-        results = [p for p in results if p["price"] <= max_price]
+        def get_numeric_price(p):
+            raw = p.get("price", 0.0)
+            if isinstance(raw, (int, float)):
+                return float(raw)
+            try:
+                cleaned = re.sub(r"[^\d.]", "", str(raw))
+                return float(cleaned) if cleaned else 0.0
+            except Exception:
+                return 0.0
+        results = [p for p in results if get_numeric_price(p) <= max_price]
 
     if occasion:
         occ_lower = occasion.lower().strip()
-        results = [
-            p for p in results
-            if any(occ_lower in o.lower() for o in p.get("occasion", []))
-        ]
+        def match_occ(p):
+            occ = p.get("occasion", [])
+            if isinstance(occ, str):
+                return occ_lower in occ.lower()
+            if isinstance(occ, list):
+                return any(occ_lower in str(o).lower() for o in occ)
+            return False
+        results = [p for p in results if match_occ(p)]
 
     if query and query.strip():
         q_tokens = [t.lower() for t in re.split(r"\s+", query.strip()) if len(t) > 2]
         scored_results = []
         for p in results:
             score = 0
-            searchable_text = f"{p['name']} {p['category']} {p['description']} {p['material']} {p.get('hero_highlight', '')} {' '.join(p.get('occasion', []))}".lower()
+            name_val = str(p.get("name") or p.get("title") or "")
+            cat_val = str(p.get("category", ""))
+            desc_val = str(p.get("description", ""))
+            mat_val = str(p.get("material", ""))
+            hero_val = str(p.get("hero_highlight", ""))
+            occ_list = p.get("occasion", [])
+            occ_val = " ".join(str(o) for o in occ_list) if isinstance(occ_list, list) else str(occ_list)
+            searchable_text = f"{name_val} {cat_val} {desc_val} {mat_val} {hero_val} {occ_val}".lower()
+
             for token in q_tokens:
-                if token in p["name"].lower():
+                if token in name_val.lower():
                     score += 5
-                elif token in p["category"].lower():
+                elif token in cat_val.lower():
                     score += 4
                 elif token in searchable_text:
                     score += 2

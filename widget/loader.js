@@ -32,7 +32,18 @@
     backendUrl: (currentScript && typeof currentScript.getAttribute === 'function' && currentScript.getAttribute('data-backend-url')) ||
       (window.__AI_SALES_CONFIG && window.__AI_SALES_CONFIG.backendUrl) ||
       'http://localhost:8000',
-    storeName: (currentScript && typeof currentScript.getAttribute === 'function' && currentScript.getAttribute('data-store-name')) || 'Karthik & Co.'
+    storeName: (currentScript && typeof currentScript.getAttribute === 'function' && currentScript.getAttribute('data-store-name')) ||
+      (window.__AI_SALES_CONFIG && window.__AI_SALES_CONFIG.storeName) ||
+      (typeof document !== 'undefined' && document.title ? document.title.split(/[-|•]/)[0].trim() : 'Our Store'),
+    storeDomain: (currentScript && typeof currentScript.getAttribute === 'function' && currentScript.getAttribute('data-store-domain')) ||
+      (window.__AI_SALES_CONFIG && window.__AI_SALES_CONFIG.storeDomain) ||
+      (typeof window !== 'undefined' && window.location ? window.location.hostname : ''),
+    currency: (currentScript && typeof currentScript.getAttribute === 'function' && currentScript.getAttribute('data-currency')) ||
+      (window.__AI_SALES_CONFIG && window.__AI_SALES_CONFIG.currency) ||
+      '$',
+    brandTone: (currentScript && typeof currentScript.getAttribute === 'function' && currentScript.getAttribute('data-brand-tone')) ||
+      (window.__AI_SALES_CONFIG && window.__AI_SALES_CONFIG.brandTone) ||
+      ''
   };
 
   const MODULES = [
@@ -86,7 +97,10 @@
         if (widgetModule && typeof widgetModule.mount === 'function') {
           widgetElement = widgetModule.mount(document.body, {
             backendUrl: config.backendUrl,
-            storeName: config.storeName
+            storeName: config.storeName,
+            storeDomain: config.storeDomain,
+            currency: config.currency,
+            brandTone: config.brandTone
           });
         }
 

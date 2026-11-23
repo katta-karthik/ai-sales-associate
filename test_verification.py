@@ -36,6 +36,47 @@ def test_widget():
     assert "customElements.define('ai-sales-associate'" in content or "customElements.define(" in content, "widget.js must define custom element"
     print("  [OK] Mounts cleanly inside closed Shadow DOM (<ai-sales-associate>)")
 
+    # Verify widget JS functionality (Customer identity, native search, session memory conversion)
+    node_script = """
+    const fs = require('fs');
+    global.window = {
+      localStorage: {
+        _d: {},
+        getItem(k) { return this._d[k] || null; },
+        setItem(k, v) { this._d[k] = String(v); }
+      },
+      sessionStorage: {
+        _d: {},
+        getItem(k) { return this._d[k] || null; },
+        setItem(k, v) { this._d[k] = String(v); },
+        removeItem(k) { delete this._d[k]; }
+      },
+      ShopifyAnalytics: { meta: { page: { customerId: 44091 } } },
+      dataLayer: [{ userId: 'user_dl_102' }],
+      location: { href: 'https://store.example.com/products/jacket', pathname: '/products/jacket' }
+    };
+    global.document = {
+      title: 'Luxury Leather Bomber | TokyoShift',
+      querySelectorAll() { return []; },
+      querySelector() { return null; },
+      addEventListener() {}
+    };
+
+    eval(fs.readFileSync('widget/dom_extractor.js', 'utf8'));
+    eval(fs.readFileSync('widget/session_memory.js', 'utf8'));
+
+    const identity = window.__AISalesAssociateDOMExtractor.extractCustomerIdentity();
+    if (identity.customerId !== '44091') throw new Error('Expected customerId 44091');
+    if (!identity.shopperUuid) throw new Error('Expected shopperUuid');
+    if (window.localStorage.getItem('__ai_sales_shopper_uuid') !== identity.shopperUuid) throw new Error('UUID not in localStorage');
+
+    const conv = window.__AISalesAssociateSessionMemory.recordConversion({ orderId: 'ORD-1', orderTotal: 99 });
+    if (conv.orderId !== 'ORD-1') throw new Error('Conversion record failed');
+    """
+    res_fn = subprocess.run(["node", "-e", node_script], capture_output=True, text=True)
+    assert res_fn.returncode == 0, f"Widget JS function check failed: {res_fn.stderr}"
+    print("  [OK] Widget customer identity & conversion telemetry verified")
+
 def test_backend():
     print("\n--- Verifying backend/ ---")
     # Verify pytest suite

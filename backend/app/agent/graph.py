@@ -11,7 +11,7 @@ Modern LangChain v0.3+ / v1.x architecture featuring:
 import logging
 import os
 import re
-from typing import Any, AsyncGenerator, Dict, List, Optional
+from typing import Annotated, Any, AsyncGenerator, Dict, List, Optional
 from dotenv import load_dotenv
 
 from langchain_core.messages import (
@@ -25,7 +25,7 @@ from langchain_core.tools import tool
 from langchain_groq import ChatGroq
 from langgraph.checkpoint.memory import MemorySaver
 from langgraph.graph import END, START, StateGraph
-from langgraph.prebuilt import ToolNode, tools_condition
+from langgraph.prebuilt import InjectedState, ToolNode, tools_condition
 
 from backend.app.agent.persona import (
     ACTION_INSTRUCTIONS,
@@ -35,6 +35,7 @@ from backend.app.agent.persona import (
     OBJECTION_INSTRUCTIONS,
     STYLIST_CORE_SYSTEM_PROMPT,
     VALIDATION_INSTRUCTIONS,
+    get_stylist_system_prompt,
 )
 from backend.app.agent.state import IntentStage, SalesState, StylistStructuredResponse
 from backend.app.catalog.catalog import CATALOG_ITEMS, get_product, list_catalog, search_catalog
@@ -125,7 +126,7 @@ def product_sizes(product: Dict[str, Any]) -> List[str]:
             if type(size) in (str, int, float) and str(size).strip()]
 
 
-def format_product_context(products: List[Dict[str, Any]]) -> str:
+def format_product_context(products: List[Dict[str, Any]], currency: str = "$") -> str:
     """Format product dicts into a concise context block for the LLM."""
     if not products:
         return "No specific products currently selected."
@@ -134,6 +135,7 @@ def format_product_context(products: List[Dict[str, Any]]) -> str:
         p_id = p.get('id') or p.get('sku') or 'item'
         p_name = p.get('title') or p.get('name') or 'Featured Item'
         price = parse_price(p.get('price', 100.0))
+        prod_curr = p.get('currency') or currency
         fit = p.get('fit') or 'Not supplied'
         material = p.get('material') or (
             p.get('description', '')[:80] if p.get('description') else 'Not supplied'
@@ -144,8 +146,17 @@ def format_product_context(products: List[Dict[str, Any]]) -> str:
         sizes = product_sizes(p)
         sizes_str = ", ".join(sizes) if sizes else "Not supplied"
 
+        # Sizing measurements table summary (Korean / Chinese precision fit)
+        measurements = p.get('measurements') or p.get('size_chart')
+        measurements_str = ""
+        if isinstance(measurements, dict):
+            summary = measurements.get('summary') or str(measurements.get('rows', ''))
+            measurements_str = f" | Size Chart: {summary}"
+        elif isinstance(measurements, str):
+            measurements_str = f" | Size Chart: {measurements}"
+
         lines.append(
-            f"- [{p_id}] {p_name} (${price:.2f}) | Fit: {fit} | Material: {material} | Sizes: {sizes_str}\n"
+            f"- [{p_id}] {p_name} ({prod_curr}{price:.2f}) | Fit: {fit} | Material: {material} | Sizes: {sizes_str}{measurements_str}\n"
             f"  Hero: {hero}\n"
             f"  Reviews: {reviews}"
         )
@@ -161,27 +172,81 @@ def has_word(text: str, cues: List[str]) -> bool:
     return False
 
 
+# ==================== MERCHANT MODE & IDENTITY DETECTION ====================
+
+def is_merchant_mode(state: Optional[Dict[str, Any]]) -> bool:
+    """Return True if state indicates an external merchant store or custom catalog."""
+    if not state or not isinstance(state, dict):
+        return False
+    if state.get("merchant_catalog"):
+        return True
+    store = (state.get("store_name") or "").lower().strip()
+    if store and store not in ("karthik & co.", "karthik & co", "karthik & co. modern apparel", "demo store", "our store"):
+        return True
+    domain = state.get("store_domain") or ""
+    if domain and "localhost" not in domain and "127.0.0.1" not in domain:
+        return True
+    return False
+
+
 # ==================== LANGCHAIN TOOLS & TOOL NODE ====================
 
 @tool
-def search_store_catalog(query: str = "", category: Optional[str] = None, max_price: Optional[float] = None, occasion: Optional[str] = None) -> List[Dict[str, Any]]:
-    """Search Karthik & Co. Modern Apparel catalog for matching shirts, jackets, pants, or suits by query, category, price, or occasion."""
-    return search_catalog(query=query, category=category, max_price=max_price, occasion=occasion, limit=3)
+def search_store_catalog(
+    query: str = "",
+    category: Optional[str] = None,
+    max_price: Optional[float] = None,
+    occasion: Optional[str] = None,
+    state: Annotated[dict, InjectedState] = None,
+) -> List[Dict[str, Any]]:
+    """Search store catalog for matching shirts, jackets, pants, suits, or apparel by query, category, price, or occasion."""
+    merchant = is_merchant_mode(state)
+    catalog = None
+    if merchant:
+        catalog = (state.get("catalog_items") if state else None) or []
+    elif state and "catalog_items" in state:
+        catalog = state.get("catalog_items")
+    return search_catalog(query=query, category=category, max_price=max_price, occasion=occasion, limit=3, catalog=catalog)
 
 
 @tool
-def get_product_specs(product_id: str) -> Dict[str, Any]:
+def get_product_specs(product_id: str, state: Annotated[dict, InjectedState] = None) -> Dict[str, Any]:
     """Retrieve full product specs, available sizes, fabric materials, fit guide, and verified customer reviews."""
+    if state and isinstance(state, dict):
+        items = (state.get("viewed_products") or []) + (state.get("catalog_items") or []) + (state.get("recommended_products") or [])
+        for item in items:
+            if str(item.get("id")) == str(product_id) or str(item.get("sku")) == str(product_id):
+                return item
+        if is_merchant_mode(state):
+            return {"error": f"Product '{product_id}' not found in store catalog"}
     prod = get_product(product_id)
     return prod if prod else {"error": f"Product '{product_id}' not found"}
 
 
 @tool
-def calculate_discount(product_id: str, promo_code: str = "STYLIST10") -> Dict[str, Any]:
-    """Calculate 10% VIP stylist discount code STYLIST10 for a product."""
-    prod = get_product(product_id) or {}
-    price = parse_price(prod.get("price", 100.0))
-    discount_rate = 0.10 if promo_code.upper() == "STYLIST10" else 0.0
+def calculate_discount(product_id: str, promo_code: str = "STYLIST10", state: Annotated[dict, InjectedState] = None) -> Dict[str, Any]:
+    """Calculate discount code for a product if authorized."""
+    merchant = is_merchant_mode(state)
+    allow = state.get("allow_discounts", not merchant) if state else not merchant
+    authorized_code = (state.get("promo_code") if state else None) or ("STYLIST10" if not merchant else None)
+
+    if merchant and not allow:
+        return {"error": "No promotional discounts are currently authorized for this store."}
+
+    # Find product price
+    price = 100.0
+    if state and isinstance(state, dict):
+        items = (state.get("viewed_products") or []) + (state.get("catalog_items") or []) + (state.get("recommended_products") or [])
+        for item in items:
+            if str(item.get("id")) == str(product_id) or str(item.get("sku")) == str(product_id):
+                price = parse_price(item.get("price", 100.0))
+                break
+    else:
+        prod = get_product(product_id) or {}
+        price = parse_price(prod.get("price", 100.0))
+
+    target_code = authorized_code or promo_code or "STYLIST10"
+    discount_rate = 0.10 if promo_code.upper() == target_code.upper() else 0.0
     discounted = round(price * (1.0 - discount_rate), 2)
     return {
         "product_id": product_id,
@@ -515,12 +580,23 @@ def classify_intent(state: SalesState) -> str:
 def build_node_prompt(node: str, state: SalesState) -> List[BaseMessage]:
     """
     Construct full prompt messages for a given sales stage node.
-    Applies modern LangChain trim_messages to maintain exact token budgets,
+    Applies dynamic store identity and modern LangChain trim_messages to maintain exact token budgets,
     start on a HumanMessage, preserve the SystemMessage, and prevent repetitive loops.
     """
+    merchant = is_merchant_mode(state)
+    store_name = state.get("store_name") or "our store"
+    store_domain = state.get("store_domain")
+    currency = state.get("currency") or "$"
+    brand_tone = state.get("brand_tone")
+
     viewed = state.get("viewed_products", [])
-    inventory = state.get("catalog_items", CATALOG_ITEMS)
-    if not viewed:
+    inventory = state.get("catalog_items")
+    if inventory is None and not merchant:
+        inventory = CATALOG_ITEMS
+    elif inventory is None:
+        inventory = []
+
+    if not viewed and inventory and not merchant:
         viewed = inventory[:1]
 
     curated = state.get("recommended_products", [])
@@ -533,40 +609,63 @@ def build_node_prompt(node: str, state: SalesState) -> List[BaseMessage]:
     sizes_str = ", ".join(sizes_avail) if sizes_avail else "Not supplied"
 
     if node == "greeting":
-        instruction = f"{GREETING_INSTRUCTIONS}\n\nCurrent items in view:\n{format_product_context(viewed)}"
+        if viewed:
+            instruction = f"{GREETING_INSTRUCTIONS}\n\nCurrent items in view:\n{format_product_context(viewed, currency)}"
+        else:
+            instruction = (
+                f"{GREETING_INSTRUCTIONS}\n\n"
+                f"No specific product currently in view. Welcome the customer warmly to {store_name} "
+                "and ask what piece, style, or occasion they are looking for."
+            )
     elif node == "discovery":
-        instruction = f"{DISCOVERY_INSTRUCTIONS}\n\nCustomer Profile: {profile}\nBrowsed items:\n{format_product_context(viewed)}"
+        instruction = f"{DISCOVERY_INSTRUCTIONS}\n\nCustomer Profile: {profile}\nBrowsed items:\n{format_product_context(viewed, currency)}"
     elif node == "curation":
         items = curated if curated else (viewed if viewed else inventory[:3])
-        instruction = f"{CURATION_INSTRUCTIONS}\n\nItems pulled from rack:\n{format_product_context(items)}"
+        instruction = f"{CURATION_INSTRUCTIONS}\n\nItems pulled from rack:\n{format_product_context(items, currency)}"
     elif node == "validation":
-        instruction = f"{VALIDATION_INSTRUCTIONS}\n\nFeatured Hero Piece:\n{format_product_context([target])}"
+        instruction = f"{VALIDATION_INSTRUCTIONS}\n\nFeatured Hero Piece:\n{format_product_context([target] if target else [], currency)}"
     elif node == "objection":
+        return_policy = target.get("return_policy") or "Store official return terms apply"
+        if not merchant and state.get("allow_discounts", True):
+            promo_info = f"Stylist Promo Code: 'STYLIST10' for 10% off today (Original: {currency}{target_price:.2f} -> Discounted: {currency}{discounted_price:.2f})."
+        else:
+            promo_info = "Pricing and promotions are confirmed by the merchant at checkout. No unauthorized discounts apply."
         instruction = (
             f"{OBJECTION_INSTRUCTIONS}\n\n"
-            f"Product details & verified reviews:\n{format_product_context([target])}\n"
+            f"Product details & verified reviews:\n{format_product_context([target] if target else [], currency)}\n"
             f"Customer Profile Sizing/Fit: Size={profile.get('size')}, Fit={profile.get('fit_preference')}.\n"
-            f"Return policy: {target.get('return_policy') or 'Not supplied'}.\n"
-            f"Stylist Promo Code: 'STYLIST10' for 10% off today (Original: ${target_price:.2f} -> Discounted: ${discounted_price:.2f})."
+            f"Return policy: {return_policy}.\n"
+            f"{promo_info}"
         )
     elif node == "action":
+        if not merchant and state.get("allow_discounts", True):
+            price_info = f"Original price: {currency}{target_price:.2f}. Discounted price (10% off with STYLIST10): {currency}{discounted_price:.2f}."
+        else:
+            price_info = f"Price: {currency}{target_price:.2f} (merchant checkout). No unauthorized discounts apply."
         instruction = (
             f"{ACTION_INSTRUCTIONS}\n\n"
-            f"Ready to checkout with item:\n{format_product_context([target])}\n"
+            f"Ready to checkout with item:\n{format_product_context([target] if target else [], currency)}\n"
             f"Customer Selected Size: {profile.get('size') or 'Not specified'}.\n"
-            f"Original price: ${target_price:.2f}. Discounted price (10% off with STYLIST10): ${discounted_price:.2f}.\n"
+            f"{price_info}\n"
             f"Available sizes: {sizes_str}."
         )
     else:
         instruction = GREETING_INSTRUCTIONS
 
-    if state.get("merchant_catalog") and node in ("action", "objection"):
+    if merchant and node in ("action", "objection"):
         instruction = (
-            "Help the shopper review product options on the merchant page. "
+            f"Help the shopper review product options on {store_name}. "
             "Only use the supplied facts. The merchant confirms price, promotions, fit and returns. "
-            "Do not promise a discount, refund or cart change.\n" + format_product_context([target])
+            "Do not promise an unverified discount, refund or cart change.\n" + format_product_context([target] if target else [], currency)
         )
-    system_content = f"{STYLIST_CORE_SYSTEM_PROMPT}\n\n{instruction}"
+
+    core_prompt = get_stylist_system_prompt(
+        store_name=store_name,
+        store_domain=store_domain,
+        currency=currency,
+        brand_tone=brand_tone,
+    )
+    system_content = f"{core_prompt}\n\n{instruction}"
     prompt_messages: List[BaseMessage] = [SystemMessage(content=system_content)]
 
     # Modern LangChain trim_messages: keeps SystemMessage, starts on human, token-bounded
@@ -598,9 +697,15 @@ def greeting_node(state: SalesState) -> Dict[str, Any]:
     last_msg = state.get("messages", [])[-1].content if state.get("messages") else ""
     profile = update_customer_profile(state, last_msg) if last_msg else state.get("customer_profile", {}).copy()
 
+    merchant = is_merchant_mode(state)
     viewed = state.get("viewed_products", [])
-    inventory = state.get("catalog_items", CATALOG_ITEMS)
-    if not viewed:
+    inventory = state.get("catalog_items")
+    if inventory is None and not merchant:
+        inventory = CATALOG_ITEMS
+    elif inventory is None:
+        inventory = []
+
+    if not viewed and inventory and not merchant:
         viewed = inventory[:1]
 
     prompt_messages = build_node_prompt("greeting", state)
@@ -608,7 +713,7 @@ def greeting_node(state: SalesState) -> Dict[str, Any]:
 
     default_replies = [
         "Shopping for an occasion",
-        "Tell me about this piece",
+        "Tell me about this piece" if viewed else "Browse the collection",
         "Check sizing & fit",
     ]
     clean_text, quick_replies = extract_pills_and_clean_message(raw_response.content, default_replies)
@@ -628,6 +733,7 @@ def discovery_node(state: SalesState) -> Dict[str, Any]:
     """Stage 2: Consultative Discovery."""
     last_msg = state.get("messages", [])[-1].content if state.get("messages") else ""
     profile = update_customer_profile(state, last_msg)
+    merchant = is_merchant_mode(state)
 
     prompt_messages = build_node_prompt("discovery", state)
     raw_response = invoke_groq_resilient(prompt_messages, temperature=0.6)
@@ -637,7 +743,11 @@ def discovery_node(state: SalesState) -> Dict[str, Any]:
     if any(w in lower for w in ["wedding", "marriage", "ceremony"]):
         default_replies = ["Ceremony", "Evening Reception", "Both events"]
     elif any(w in lower for w in ["reception", "dinner"]):
-        default_replies = ["What shoes work best?", "Check my size", "Apply 10% discount and let's buy"]
+        default_replies = [
+            "What shoes work best?",
+            "Check my size",
+            "Review product options" if merchant else "Apply 10% discount and let's buy"
+        ]
     elif any(w in lower for w in ["name", "biased", "based", "who are you", "who r u"]):
         default_replies = ["Shopping for an occasion", "Just browsing fresh styles", "Check size & fit"]
     else:
@@ -666,22 +776,36 @@ def curation_node(state: SalesState) -> Dict[str, Any]:
     profile = update_customer_profile(state, last_msg)
     occasion = profile.get("occasion")
     budget = profile.get("budget")
+    merchant = is_merchant_mode(state)
 
-    curated = search_catalog(query=last_msg, occasion=occasion, max_price=budget, limit=3)
-    if len(curated) < 2:
-        curated = CATALOG_ITEMS[:3]
+    if merchant or "catalog_items" in state:
+        merchant_items = state.get("catalog_items", [])
+        curated = search_catalog(query=last_msg, occasion=occasion, max_price=budget, limit=3, catalog=merchant_items)
+    else:
+        curated = search_catalog(query=last_msg, occasion=occasion, max_price=budget, limit=3)
+        if len(curated) < 2 and not merchant:
+            curated = CATALOG_ITEMS[:3]
 
     state["recommended_products"] = curated
     prompt_messages = build_node_prompt("curation", state)
     raw_response = invoke_groq_resilient(prompt_messages, temperature=0.6)
 
-    first_name = curated[0].get('name', curated[0].get('title', 'Piece')).split()[-1]
-    default_replies = [
-        f"How does the {first_name} fit?",
-        "What shoes or pants pair with this?",
-        "Apply 10% discount",
-    ]
-    default_fallback = f"Here is the {first_name}—a versatile staple tailored for your vibe."
+    if curated:
+        first_name = curated[0].get('name', curated[0].get('title', 'Piece')).split()[-1]
+        default_replies = [
+            f"How does the {first_name} fit?",
+            "What shoes or pants pair with this?",
+            "Check sizing guide" if merchant else "Apply 10% discount",
+        ]
+        default_fallback = f"Here is the {first_name}—a versatile staple tailored for your vibe."
+    else:
+        default_replies = [
+            "Check sizing & fit",
+            "What styles do you have?",
+            "Tell me about your pieces",
+        ]
+        default_fallback = "I couldn't find an exact match in our current selection. Tell me what style or piece you're looking for."
+
     clean_text, quick_replies = extract_pills_and_clean_message(raw_response.content, default_replies, fallback_text=default_fallback)
     response = AIMessage(content=clean_text)
 
@@ -699,19 +823,20 @@ def validation_node(state: SalesState) -> Dict[str, Any]:
     """Stage 4: Fitting Room ('Hero' Validation Compliment)."""
     last_msg = state.get("messages", [])[-1].content if state.get("messages") else ""
     profile = update_customer_profile(state, last_msg)
+    merchant = is_merchant_mode(state)
 
     curated = state.get("recommended_products", [])
     viewed = state.get("viewed_products", [])
-    target = curated[0] if curated else (viewed[0] if viewed else CATALOG_ITEMS[0])
+    target = curated[0] if curated else (viewed[0] if viewed else ({} if merchant else CATALOG_ITEMS[0]))
 
     prompt_messages = build_node_prompt("validation", state)
     raw_response = invoke_groq_resilient(prompt_messages, temperature=0.65)
 
-    target_name = target.get('name', target.get('title', 'Piece')).split()[-1]
+    target_name = target.get('name', target.get('title', 'Piece')).split()[-1] if target else "piece"
     default_replies = [
         f"How's the sizing on the {target_name}?",
         "What shoes pair best?",
-        "Apply 10% discount and let's buy",
+        "Check sizing guide" if merchant else "Apply 10% discount and let's buy",
     ]
     default_fallback = f"The {target_name} flatters your build with an effortless, sharp drape."
     clean_text, quick_replies = extract_pills_and_clean_message(raw_response.content, default_replies, fallback_text=default_fallback)
@@ -730,10 +855,11 @@ def objection_node(state: SalesState) -> Dict[str, Any]:
     """Stage 5: Objection Handling & Social Proof."""
     last_msg = state.get("messages", [])[-1].content if state.get("messages") else ""
     profile = update_customer_profile(state, last_msg)
+    merchant = is_merchant_mode(state)
 
     curated = state.get("recommended_products", [])
     viewed = state.get("viewed_products", [])
-    target = curated[0] if curated else (viewed[0] if viewed else CATALOG_ITEMS[0])
+    target = curated[0] if curated else (viewed[0] if viewed else ({} if merchant else CATALOG_ITEMS[0]))
     sizes_avail = product_sizes(target)
 
     prompt_messages = build_node_prompt("objection", state)
@@ -744,7 +870,7 @@ def objection_node(state: SalesState) -> Dict[str, Any]:
     else:
         default_replies = [
             "I'm between Medium and Large",
-            "Apply the 10% discount and let's buy",
+            "Review product options" if merchant else "Apply the 10% discount and let's buy",
             "What sizes are in stock?",
         ]
     default_fallback = f"The {target.get('title') or target.get('name') or 'garment'} fits true to size with premium natural stretch and easy returns."
@@ -764,43 +890,62 @@ def action_node(state: SalesState) -> Dict[str, Any]:
     """Stage 6: Guided Checkout (The Cashier)."""
     last_msg = state.get("messages", [])[-1].content if state.get("messages") else ""
     profile = update_customer_profile(state, last_msg)
+    merchant = is_merchant_mode(state)
 
     curated = state.get("recommended_products", [])
     viewed = state.get("viewed_products", [])
-    target = curated[0] if curated else (viewed[0] if viewed else CATALOG_ITEMS[0])
-
-    cart_intent = state.get("cart_intent", {}).copy()
-    cart_intent["items"] = [target]
-    cart_intent["applied_discount"] = "STYLIST10"
-    cart_intent["ready_for_checkout"] = True
-    if profile.get("size"):
-        cart_intent["size"] = profile["size"]
+    target = curated[0] if curated else (viewed[0] if viewed else ({} if merchant else CATALOG_ITEMS[0]))
 
     target_price = parse_price(target.get("price", 100.0))
     discounted_price = round(target_price * 0.9, 2)
     sizes_avail = product_sizes(target)
     target_name = target.get("title") or target.get("name") or "Featured Item"
+    target_curr = target.get("currency") or state.get("currency") or "$"
 
-    action_payload = {
-        "type": "checkout",
-        "product_id": target.get("id"),
-        "product_name": target_name,
-        "original_price": target_price,
-        "discounted_price": discounted_price,
-        "discount_code": "STYLIST10",
-        "checkout_url": f"/checkout?item={target.get('id')}&discount=STYLIST10",
-        "sizes_available": sizes_avail,
-    }
+    cart_intent = state.get("cart_intent", {}).copy()
+    cart_intent["items"] = [target] if target else []
+    cart_intent["ready_for_checkout"] = True
+    if profile.get("size"):
+        cart_intent["size"] = profile["size"]
+
+    if merchant or not state.get("allow_discounts", True):
+        action_payload = {
+            "type": "view_product",
+            "product_id": target.get("id"),
+            "product_name": target_name,
+            "url": target.get("url"),
+            "price": target_price,
+            "currency": target_curr,
+            "sizes_available": sizes_avail,
+        }
+        default_replies = [
+            "Review product options",
+            "Check sizing",
+            "What shoes pair with this?",
+        ]
+        default_fallback = f"The {target_name} is ready for review. Tap to check options."
+    else:
+        cart_intent["applied_discount"] = "STYLIST10"
+        action_payload = {
+            "type": "checkout",
+            "product_id": target.get("id"),
+            "product_name": target_name,
+            "original_price": target_price,
+            "discounted_price": discounted_price,
+            "discount_code": "STYLIST10",
+            "checkout_url": f"/checkout?item={target.get('id')}&discount=STYLIST10",
+            "sizes_available": sizes_avail,
+        }
+        default_replies = [
+            "View & Buy",
+            "What shoes pair with this?",
+            "What is your return policy?",
+        ]
+        default_fallback = f"Your 10% discount with STYLIST10 is applied to the {target_name} ({target_curr}{discounted_price:.2f}). Tap View & Buy to secure your size."
 
     prompt_messages = build_node_prompt("action", state)
     raw_response = invoke_groq_resilient(prompt_messages, temperature=0.5)
 
-    default_replies = [
-        "View & Buy",
-        "What shoes pair with this?",
-        "What is your return policy?",
-    ]
-    default_fallback = f"Your 10% discount with STYLIST10 is applied to the {target_name} (${discounted_price:.2f}). Tap View & Buy to secure your size."
     clean_text, quick_replies = extract_pills_and_clean_message(raw_response.content, default_replies, fallback_text=default_fallback)
     response = AIMessage(content=clean_text)
 

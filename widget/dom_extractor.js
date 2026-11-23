@@ -74,7 +74,7 @@
       const image = jsonLd.image || meta.image || dom.image || '';
       const description = jsonLd.description || meta.description || dom.description || '';
       const material = jsonLd.material || dom.material || '';
-      const brand = jsonLd.brand || meta.brand || dom.brand || 'Karthik & Co.';
+      const brand = jsonLd.brand || meta.brand || dom.brand || (typeof window !== 'undefined' && window.Shopify && window.Shopify.shop) || '';
       const sku = jsonLd.sku || dom.sku || '';
       const availability = jsonLd.availability || dom.availability || 'InStock';
 
@@ -92,6 +92,8 @@
       const variants = dom.variants || { sizes: [], colors: [] };
       const selectedVariant = dom.selectedVariant || { size: '', color: '' };
       const ctaButtons = dom.ctaButtons || {};
+      const measurements = this._extractMeasurementTable();
+      const customerIdentity = this.extractCustomerIdentity();
 
       return {
         isProductPage,
@@ -111,6 +113,9 @@
         colors: variants.colors || [],
         selectedVariant,
         ctaButtons,
+        measurements,
+        sizeChart: measurements,
+        customerIdentity,
         url: loc.href
       };
     }
@@ -313,6 +318,284 @@
       }, { passive: true });
     }
 
+    /**
+     * Shopper Identity Extraction (China/Korea precision tracking).
+     * Extracts persistent shopper UUID from localStorage, merchant customerId from
+     * Shopify/ShopifyAnalytics/dataLayers, and login state.
+     */
+    extractCustomerIdentity() {
+      let customerId = null;
+      let email = null;
+      let shopperUuid = null;
+
+      // 1. Merchant config explicit customer identity
+      try {
+        if (typeof window !== 'undefined' && window.__AI_SALES_CONFIG) {
+          customerId = window.__AI_SALES_CONFIG.customerId || window.__AI_SALES_CONFIG.customer_id || null;
+          email = window.__AI_SALES_CONFIG.customerEmail || window.__AI_SALES_CONFIG.customer_email || null;
+        }
+      } catch (e) {}
+
+      // 2. Session memory cached customer identity
+      try {
+        if (typeof window !== 'undefined' && window.__AISalesAssociateSessionMemory?.getCustomerIdentity) {
+          const cached = window.__AISalesAssociateSessionMemory.getCustomerIdentity();
+          if (cached) {
+            if (!customerId && cached.customerId) customerId = cached.customerId;
+            if (!email && cached.email) email = cached.email;
+          }
+        }
+      } catch (e) {}
+
+      // 3. Cross-session persistent shopper UUID in localStorage
+      try {
+        const STORAGE_KEY = '__ai_sales_shopper_uuid';
+        if (typeof window !== 'undefined' && window.localStorage) {
+          shopperUuid = window.localStorage.getItem(STORAGE_KEY);
+          if (!shopperUuid) {
+            if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
+              shopperUuid = crypto.randomUUID();
+            } else {
+              shopperUuid = 'shopper-' + Date.now() + '-' + Math.random().toString(36).substring(2, 10);
+            }
+            window.localStorage.setItem(STORAGE_KEY, shopperUuid);
+          }
+        }
+      } catch (e) {
+        shopperUuid = shopperUuid || 'anon-shopper-' + Math.random().toString(36).substring(2, 10);
+      }
+
+      // 4. Shopify Analytics / page metadata
+      try {
+        if (typeof window !== 'undefined') {
+          if (window.ShopifyAnalytics?.meta?.page?.customerId) {
+            customerId = String(window.ShopifyAnalytics.meta.page.customerId);
+          } else if (window.__st?.cid) {
+            customerId = String(window.__st.cid);
+          } else if (window.meta?.page?.customerId) {
+            customerId = String(window.meta.page.customerId);
+          } else if (window.Shopify?.checkout?.customer_id) {
+            customerId = String(window.Shopify.checkout.customer_id);
+          }
+        }
+      } catch (e) {}
+
+      // 5. Google Tag Manager / Segment dataLayer inspection
+      try {
+        if (typeof window !== 'undefined' && Array.isArray(window.dataLayer)) {
+          for (const entry of window.dataLayer) {
+            if (!entry || typeof entry !== 'object') continue;
+            if (!customerId) {
+              const id = entry.userId || entry.user_id || entry.customerId || entry.customer_id || entry.ecommerce?.customer_id;
+              if (id) customerId = String(id);
+            }
+            if (!email) {
+              const em = entry.userEmail || entry.user_email || entry.email;
+              if (em) email = String(em);
+            }
+          }
+        }
+      } catch (e) {}
+
+      const identity = {
+        customerId: customerId || null,
+        shopperUuid: shopperUuid,
+        email: email || null,
+        isLoggedIn: Boolean(customerId)
+      };
+
+      if (typeof window !== 'undefined' && window.__AISalesAssociateSessionMemory?.setCustomerIdentity) {
+        try { window.__AISalesAssociateSessionMemory.setCustomerIdentity(identity); } catch (e) {}
+      }
+
+      return identity;
+    }
+
+    /**
+     * Enhanced precision sizing extraction detecting measurement tables
+     * (chest, waist, length in cm/inches, plus footwear sizes) from PDP tables.
+     */
+    _extractMeasurementTable() {
+      try {
+        const keywords = [
+          'chest', 'bust', 'waist', 'hip', 'length', 'shoulder', 'sleeve', 'inseam',
+          'cm', 'inch', 'inches', 'eu', 'uk', 'us', 'jp', 'foot', 'insole', 'size', 'height', 'weight', 'width'
+        ];
+        const tables = document.querySelectorAll('table, .size-guide table, .size-chart table');
+        for (const table of tables) {
+          const text = (table.textContent || '').toLowerCase();
+          const matches = keywords.filter(k => text.includes(k));
+          if (matches.length < 2) continue;
+
+          // Select closest header row to data (last thead row if multiple thead rows exist)
+          const headerRow = table.querySelector('thead tr:last-child') || table.querySelector('tr:first-child');
+          const headers = [];
+          if (headerRow) {
+            const ths = headerRow.querySelectorAll('th, td');
+            ths.forEach(h => {
+              const val = (h.textContent || '').trim();
+              if (val) headers.push(val);
+            });
+          }
+
+          const rows = [];
+          const trs = table.querySelectorAll('tbody tr, tr:not(:first-child)');
+          trs.forEach(tr => {
+            if (tr === headerRow) return;
+            const cells = tr.querySelectorAll('td, th');
+            if (cells.length > 0) {
+              const rowObj = {};
+              cells.forEach((c, idx) => {
+                const colName = headers[idx] || `col_${idx}`;
+                rowObj[colName] = (c.textContent || '').trim();
+              });
+              rows.push(rowObj);
+            }
+          });
+
+          if (rows.length > 0) {
+            const summary = rows.slice(0, 6).map(r => Object.entries(r).map(([k, v]) => `${k}: ${v}`).join(', ')).join(' | ');
+            return {
+              headers,
+              rows: rows.slice(0, 10),
+              summary
+            };
+          }
+        }
+      } catch (e) {}
+      return null;
+    }
+
+    /**
+     * Autonomous native store search detection:
+     * - Queries Shopify /search/suggest.json?q={query}&resources[type]=product
+     * - Queries WooCommerce Store API /wp-json/wc/store/v1/products or /?s={query}&post_type=product
+     * - Or accepts dynamic store products via custom search provider
+     */
+    async searchNativeStore(query) {
+      if (!query || typeof query !== 'string') return [];
+      const clean = query.trim();
+      if (!clean) return [];
+
+      // Avoid unnecessary requests on pure conversational chit-chat
+      const lower = clean.toLowerCase();
+      const skipPhrases = ['hi', 'hello', 'hey', 'good morning', 'good evening', 'who are you', 'what is your name', 'yes', 'no', 'ok', 'okay', 'check my size'];
+      if (skipPhrases.includes(lower)) return [];
+
+      const toAbsoluteUrl = (u) => {
+        if (!u) return '';
+        try {
+          return (typeof window !== 'undefined' && window.location) ? new URL(u, window.location.origin).href : u;
+        } catch (e) {
+          return u;
+        }
+      };
+
+      // 1. Dynamic custom search provider hook if supplied by merchant
+      if (typeof window !== 'undefined') {
+        const customFn = window.__AI_SALES_SEARCH_FN || (window.__AI_SALES_CONFIG && window.__AI_SALES_CONFIG.searchProducts);
+        if (typeof customFn === 'function') {
+          try {
+            const results = await customFn(clean);
+            if (Array.isArray(results) && results.length > 0) return results;
+          } catch (e) {}
+        }
+      }
+
+      // 2. Shopify Native Suggest API Detection
+      const isShopify = typeof window !== 'undefined' && Boolean(
+        window.Shopify ||
+        document.querySelector('link[href*="cdn.shopify.com"]') ||
+        document.querySelector('script[src*="cdn.shopify.com"]') ||
+        document.querySelector('meta[name="shopify-checkout-api-token"]')
+      );
+
+      if (isShopify) {
+        try {
+          const url = `/search/suggest.json?q=${encodeURIComponent(clean)}&resources[type]=product&resources[limit]=5`;
+          const res = await fetch(url, {
+            headers: { 'Accept': 'application/json' },
+            credentials: 'same-origin'
+          });
+          if (res.ok) {
+            const data = await res.json();
+            const products = data?.resources?.results?.products;
+            if (Array.isArray(products) && products.length > 0) {
+              return products.map(p => ({
+                id: String(p.id || p.handle || p.title),
+                title: p.title || p.name,
+                name: p.title || p.name,
+                price: p.price || (p.price_min ? (p.price_min / 100).toFixed(2) : ''),
+                url: toAbsoluteUrl(p.url),
+                image: p.image || p.featured_image?.url || (p.images && p.images[0]) || '',
+                description: (p.body || p.description || '').replace(/<[^>]*>/g, '').slice(0, 160),
+                in_stock: p.available !== false
+              }));
+            }
+          }
+        } catch (e) {}
+      }
+
+      // 3. WooCommerce Native Search Detection (Store API + Fallback)
+      const isWooCommerce = typeof window !== 'undefined' && Boolean(
+        window.wc_add_to_cart_params ||
+        document.body?.classList?.contains('woocommerce') ||
+        document.querySelector('link[href*="woocommerce"]')
+      );
+
+      if (isWooCommerce) {
+        // Try modern Store API first
+        try {
+          const storeApiUrl = `/wp-json/wc/store/v1/products?search=${encodeURIComponent(clean)}&per_page=5`;
+          const res = await fetch(storeApiUrl, {
+            headers: { 'Accept': 'application/json' },
+            credentials: 'same-origin'
+          });
+          if (res.ok) {
+            const data = await res.json();
+            if (Array.isArray(data) && data.length > 0) {
+              return data.slice(0, 5).map(p => ({
+                id: String(p.id || p.slug || p.name),
+                title: p.name || p.title,
+                name: p.name || p.title,
+                price: p.prices?.price ? (Number(p.prices.price) / 100).toFixed(2) : (p.price || ''),
+                url: toAbsoluteUrl(p.permalink || p.url),
+                image: (p.images && p.images[0]?.src) || '',
+                description: (p.short_description || p.description || '').replace(/<[^>]*>/g, '').slice(0, 160),
+                in_stock: p.is_in_stock !== false
+              }));
+            }
+          }
+        } catch (e) {}
+
+        // Fallback to legacy WooCommerce JSON search endpoint
+        try {
+          const url = `/?s=${encodeURIComponent(clean)}&post_type=product&json=1`;
+          const res = await fetch(url, {
+            headers: { 'Accept': 'application/json' },
+            credentials: 'same-origin'
+          });
+          if (res.ok) {
+            const data = await res.json();
+            if (Array.isArray(data) && data.length > 0) {
+              return data.slice(0, 5).map(p => ({
+                id: String(p.id || p.slug || p.title),
+                title: p.title || p.name,
+                name: p.title || p.name,
+                price: p.price || p.regular_price || '',
+                url: toAbsoluteUrl(p.permalink || p.url),
+                image: p.image_url || (p.images && p.images[0]?.src) || '',
+                description: (p.short_description || p.description || '').replace(/<[^>]*>/g, '').slice(0, 160),
+                in_stock: p.is_in_stock !== false
+              }));
+            }
+          }
+        } catch (e) {}
+      }
+
+      return [];
+    }
+
     _cleanText(str) {
       if (!str) return '';
       return String(str).replace(/\s+/g, ' ').trim();
@@ -331,6 +614,8 @@
     instance: extractorInstance,
     extract: (cb) => extractorInstance.extract(cb),
     getCachedProduct: () => extractorInstance.getCachedProduct(),
-    onProductChange: (fn) => extractorInstance.onProductChange(fn)
+    onProductChange: (fn) => extractorInstance.onProductChange(fn),
+    extractCustomerIdentity: () => extractorInstance.extractCustomerIdentity(),
+    searchNativeStore: (query) => extractorInstance.searchNativeStore(query)
   };
 })(window, document);

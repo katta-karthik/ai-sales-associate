@@ -699,6 +699,10 @@
       this.isStreaming = false;
       this.currentProduct = null;
       this.hesitationTrigger = null;
+      this.storeName = (typeof window !== 'undefined' && window.__AI_SALES_CONFIG && window.__AI_SALES_CONFIG.storeName) || '';
+      this.storeDomain = (typeof window !== 'undefined' && window.__AI_SALES_CONFIG && window.__AI_SALES_CONFIG.storeDomain) || '';
+      this.currency = (typeof window !== 'undefined' && window.__AI_SALES_CONFIG && window.__AI_SALES_CONFIG.currency) || '$';
+      this.brandTone = (typeof window !== 'undefined' && window.__AI_SALES_CONFIG && window.__AI_SALES_CONFIG.brandTone) || '';
       this.shadow = this.attachShadow({ mode: 'closed' });
       this.initStyles();
       this.render();
@@ -837,6 +841,18 @@
       if (options.backendUrl) {
         this.backendUrl = options.backendUrl.replace(/\/$/, '');
       }
+      if (options.storeName) {
+        this.storeName = options.storeName;
+      }
+      if (options.storeDomain) {
+        this.storeDomain = options.storeDomain;
+      }
+      if (options.currency) {
+        this.currency = options.currency;
+      }
+      if (options.brandTone) {
+        this.brandTone = options.brandTone;
+      }
       if (options.currentProduct) {
         this.currentProduct = options.currentProduct;
       }
@@ -965,12 +981,13 @@
     }
 
     renderInitialGreeting() {
-      let welcomeText = "What are you looking for? Tell me a material, a budget, or the occasion you’re dressing for.";
-      let quickReplies = ["Show me wool under $200", "Browse the collection", "Shopping for an occasion"];
+      const storeName = this.storeName || "our store";
+      let welcomeText = `Welcome to ${storeName}! I'm Julian, your personal stylist. What style or piece can I help you find today?`;
+      let quickReplies = ["Browse the collection", "Check sizing & fit", "Shopping for an occasion"];
 
       if (this.currentProduct && this.currentProduct.isProductPage) {
         const title = this.currentProduct.title || this.currentProduct.name || "this piece";
-        welcomeText = `Welcome! I'm Julian, your stylist here. Eyeing **${title}**? Can I help you check fit or suggest a pairing?`;
+        welcomeText = `Welcome! I'm Julian, your stylist at ${storeName}. Eyeing **${title}**? Can I help you check fit or suggest a pairing?`;
         quickReplies = ["Check my size", "Will this suit an evening event?", "Are there any discounts today?"];
       }
 
@@ -1018,14 +1035,32 @@
         ? window.__AISalesAssociateSessionMemory.getViewedProducts()
         : [];
 
+      const customerIdentity = window.__AISalesAssociateDOMExtractor?.extractCustomerIdentity?.() || {};
+
+      let dynamicCatalog = window.__AI_SALES_CONFIG?.catalog;
+      if (!dynamicCatalog && window.__AISalesAssociateDOMExtractor?.searchNativeStore) {
+        try {
+          const nativeMatches = await window.__AISalesAssociateDOMExtractor.searchNativeStore(userText);
+          if (Array.isArray(nativeMatches) && nativeMatches.length > 0) {
+            dynamicCatalog = nativeMatches;
+          }
+        } catch (e) {}
+      }
+
       const payload = {
         message: userText,
         session_id: sessionId,
         thread_id: sessionId,
-        catalog: window.__AI_SALES_CONFIG?.catalog,
+        store_name: this.storeName || (typeof window !== 'undefined' && window.__AI_SALES_CONFIG && window.__AI_SALES_CONFIG.storeName) || null,
+        store_domain: this.storeDomain || (typeof window !== 'undefined' && window.__AI_SALES_CONFIG && window.__AI_SALES_CONFIG.storeDomain) || (typeof window !== 'undefined' && window.location ? window.location.hostname : null),
+        currency: this.currentProduct?.currency || this.currency || (typeof window !== 'undefined' && window.__AI_SALES_CONFIG && window.__AI_SALES_CONFIG.currency) || '$',
+        brand_tone: this.brandTone || (typeof window !== 'undefined' && window.__AI_SALES_CONFIG && window.__AI_SALES_CONFIG.brandTone) || null,
+        customer_id: customerIdentity.customerId || null,
+        shopper_uuid: customerIdentity.shopperUuid || null,
+        catalog: dynamicCatalog,
         product: this.currentProduct?.isProductPage ? this.currentProduct : null,
         viewed_products: viewedProducts,
-        hesitation_trigger: this.hesitationTrigger ? this.hesitationTrigger.type : null
+        hesitation_trigger: this.hesitationTrigger || null
       };
 
       let streamRow;
