@@ -39,7 +39,10 @@ from backend.app.agent.graph import (
     make_punchy,
     parse_price,
     sales_graph,
+    sales_tools,
+    sales_tool_node,
     stream_groq_resilient,
+    update_customer_profile,
 )
 from backend.app.agent.persona import STYLIST_CORE_SYSTEM_PROMPT
 from backend.app.agent.state import IntentStage, SalesState, init_sales_state
@@ -103,9 +106,18 @@ def is_valid_product(prod: Optional[Dict[str, Any]]) -> bool:
 
 
 def get_or_create_session(session_id: Optional[str], viewed_product: Optional[Dict[str, Any]] = None, catalog: Optional[List[Dict[str, Any]]] = None) -> tuple[str, SalesState]:
-    """Retrieve existing session or instantiate a fresh SalesState."""
+    """Retrieve existing session or instantiate a fresh SalesState with MemorySaver checkpointer sync."""
     sid = session_id or str(uuid.uuid4())
     valid_prod = viewed_product if is_valid_product(viewed_product) else None
+
+    if sid not in SESSIONS:
+        # Check if checkpointer already has checkpoint for this thread_id
+        try:
+            checkpoint_state = sales_graph.get_state({"configurable": {"thread_id": sid}})
+            if checkpoint_state and checkpoint_state.values:
+                SESSIONS[sid] = dict(checkpoint_state.values)
+        except Exception:
+            pass
 
     if sid not in SESSIONS:
         viewed_list = [valid_prod] if valid_prod else ([] if catalog is not None else [CATALOG_ITEMS[0]])
@@ -220,7 +232,7 @@ def resolve_node_metadata(node: str, state: SalesState, user_text: str = "") -> 
         ]
         recs = [target]
 
-    elif has_word(text_lower, ["size", "sizes", "sizing", "fit", "fits", "measure", "measurements", "height", "weight"]) or has_word(text_lower, [size.lower() for size in sizes_avail]):
+    elif node == "objection" or has_word(text_lower, ["size", "sizes", "sizing", "fit", "fits", "measure", "measurements", "height", "weight", "m", "l", "s", "xl", "xs"]) or (sizes_avail and has_word(text_lower, [str(size).lower() for size in sizes_avail])):
         stage = "EVALUATOR"
         show_card = False
         action = None
@@ -356,6 +368,7 @@ def chat_sync(req: ChatRequest):
     sid, state = get_or_create_session(session_id_val, product_val, req.catalog)
 
     if req.message:
+        update_customer_profile(state, req.message)
         state["messages"].append(HumanMessage(content=req.message))
     elif req.event == "approach":
         # Proactive approach trigger from hesitation detector
@@ -384,6 +397,11 @@ def chat_sync(req: ChatRequest):
     state["messages"].append(clean_ai_message)
     state["quick_replies"] = dynamic_replies
     SESSIONS[sid] = state
+
+    try:
+        sales_graph.update_state({"configurable": {"thread_id": sid}}, dict(state))
+    except Exception as e:
+        logger.debug("checkpointer update: %s", e)
 
     return ChatResponse(
         session_id=sid,
@@ -425,6 +443,7 @@ async def chat_stream(request: Request):
     sid, state = get_or_create_session(session_id, product, req.catalog if request.method == "POST" else None)
 
     if message:
+        update_customer_profile(state, message)
         state["messages"].append(HumanMessage(content=message))
     elif event == "hesitation":
         state["messages"].append(HumanMessage(content="I'm browsing this item but second-guessing if it will look good on me."))
@@ -463,27 +482,52 @@ async def chat_stream(request: Request):
         }
         yield f"event: start\ndata: {json.dumps(meta_event)}\n\n"
 
-        # 2. Stream tokens from Groq
+        # 2. Stream tokens from Groq with tag-prefix buffering to prevent <pills> leaks
         full_tokens = []
+        stream_buf = ""
         in_pills = False
+        tag = "<pills"
         try:
             async for chunk in stream_groq_resilient(prompt_msgs):
                 content = chunk.content
                 if content:
                     full_tokens.append(content)
-                    current_str = "".join(full_tokens)
+                    if in_pills:
+                        stream_buf += content
+                        if "</pills>" in stream_buf:
+                            break
+                        continue
 
-                    # Once <pills tag starts, do not stream pill syntax into the chat bubble
-                    if "<pills" in current_str:
+                    stream_buf += content
+                    idx = stream_buf.find(tag)
+                    if idx != -1:
+                        safe = stream_buf[:idx]
+                        if safe:
+                            token_event = {"type": "token", "content": safe}
+                            yield f"event: token\ndata: {json.dumps(token_event)}\n\n"
                         in_pills = True
+                        continue
 
-                    if not in_pills:
-                        token_event = {"type": "token", "content": content}
+                    # Check for partial prefix of tag at the end of stream_buf
+                    matched_prefix_len = 0
+                    for i in range(len(tag) - 1, 0, -1):
+                        if stream_buf.endswith(tag[:i]):
+                            matched_prefix_len = i
+                            break
+                    if matched_prefix_len > 0:
+                        safe = stream_buf[:-matched_prefix_len]
+                        if safe:
+                            token_event = {"type": "token", "content": safe}
+                            yield f"event: token\ndata: {json.dumps(token_event)}\n\n"
+                        stream_buf = stream_buf[-matched_prefix_len:]
+                    else:
+                        token_event = {"type": "token", "content": stream_buf}
                         yield f"event: token\ndata: {json.dumps(token_event)}\n\n"
+                        stream_buf = ""
 
-                    # If </pills> tag is closed, stream is complete
-                    if "</pills>" in current_str:
-                        break
+            if not in_pills and stream_buf:
+                token_event = {"type": "token", "content": stream_buf}
+                yield f"event: token\ndata: {json.dumps(token_event)}\n\n"
         except Exception as e:
             logger.error("Error during streaming: %s", e)
             error_event = {"type": "error", "error": str(e)}
@@ -497,6 +541,11 @@ async def chat_stream(request: Request):
         state["messages"].append(clean_ai_msg)
         state["quick_replies"] = dynamic_replies
         SESSIONS[sid] = state
+
+        try:
+            sales_graph.update_state({"configurable": {"thread_id": sid}}, dict(state))
+        except Exception as e:
+            logger.debug("checkpointer update: %s", e)
 
         done_event = {
             "type": "done",
@@ -525,10 +574,15 @@ async def chat_stream(request: Request):
 
 @app.post("/api/reset")
 def reset_session(req: Dict[str, str]):
-    """Reset session history."""
+    """Reset session history completely across both SESSIONS store and checkpointer."""
     sid = req.get("session_id")
-    if sid and sid in SESSIONS:
-        del SESSIONS[sid]
+    if sid:
+        if sid in SESSIONS:
+            del SESSIONS[sid]
+        try:
+            sales_graph.delete_thread(sid)
+        except Exception as e:
+            logger.debug("sales_graph delete_thread: %s", e)
     return {"status": "reset", "session_id": sid}
 
 
