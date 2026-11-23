@@ -10,6 +10,7 @@ from dotenv import load_dotenv
 from fastapi import FastAPI, HTTPException, Query, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse, StreamingResponse
+from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
 # Load environment variables
@@ -61,6 +62,11 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+# Serve the client-side Widget SDK directly for 1-line store integration
+WIDGET_DIR = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))), "widget")
+if os.path.exists(WIDGET_DIR):
+    app.mount("/widget", StaticFiles(directory=WIDGET_DIR), name="widget")
 
 
 # ==================== PYDANTIC SCHEMAS ====================

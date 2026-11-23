@@ -90,20 +90,20 @@ flowchart LR
 ## 📂 Repository Layout
 
 ```
-├── widget/                 # Client-side embeddable SDK
+├── widget/                 # Universal Client-side Embeddable SDK (<15KB)
 │   ├── loader.js           # Async entrypoint, platform detector & circuit breaker
 │   ├── shield.js           # Error boundary, retry limits, performance monitor
-│   ├── widget.js           # Shadow DOM floating companion & product carousel UI
-│   └── adapters/           # Host platform adapters (Shopify, WooCommerce, Generic)
+│   ├── dom_extractor.js    # Autonomous DOM scraper (Schema.org JSON-LD, OpenGraph)
+│   ├── hesitation_matrix.js# User hesitation & high-intent engagement sensor
+│   ├── session_memory.js   # Client session & chat history persistence
+│   └── widget.js           # Closed Shadow DOM UI & conversational companion
 ├── backend/                # Cloud AI Sales Engine
 │   ├── app/
-│   │   ├── agent/          # LangGraph state machine & sales workflows
-│   │   ├── catalog/        # Product catalog provider & search index
-│   │   └── api/            # Streaming API endpoints (FastAPI / SSE)
-│   └── requirements.txt
-├── demo/                   # Interactive demo store for testing
-│   └── index.html          # Mock apparel store showcasing live widget
-├── openwiki/               # Autonomous OpenWiki architectural grounding
+│   │   ├── agent/          # LangGraph state machine & sales stage routing
+│   │   ├── catalog/        # Catalog provider & discovery search
+│   │   └── main.py         # FastAPI SSE streaming server & widget static server
+│   └── tests/              # Comprehensive test suite (pytest)
+├── openwiki/               # Architectural grounding & contracts
 └── README.md
 ```
 
@@ -113,16 +113,18 @@ flowchart LR
 
 ### 1. Run the Backend Sales Engine
 ```bash
-cd backend
-python -m venv venv
-# Windows:
-.\venv\Scripts\activate
-# Mac/Linux:
-source venv/bin/activate
-
-pip install -r requirements.txt
-uvicorn app.main:app --reload --port 8000
+pip install -r backend/requirements.txt
+python -m uvicorn backend.app.main:app --host 127.0.0.1 --port 8000
 ```
 
-### 2. Test with the Interactive Demo Store
-Open `demo/index.html` in your browser. The mock store will load with the AI Sales Associate active in its isolated Shadow DOM container!
+### 2. Embed into ANY E-Commerce Store
+Add this single `<script>` tag inside your store's HTML (Shopify `theme.liquid`, WooCommerce, Magento, React, or custom HTML):
+
+```html
+<script src="http://localhost:8000/widget/loader.js" async defer></script>
+```
+
+The widget will automatically:
+1. Mount inside an isolated, closed Shadow DOM (zero CSS bleed, zero page interference).
+2. Autonomously extract product details, sizes, and prices from your store's existing Schema.org (`application/ld+json`) or OpenGraph tags.
+3. Handle shopper fit inquiries, styling advice, and budget discovery via Groq LPU sub-second streaming.
